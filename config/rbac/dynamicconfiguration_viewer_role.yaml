@@ -1,0 +1,27 @@
+# permissions for end users to view dynamicconfigurations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: dynamicconfiguration-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: nacos-controller
+    app.kubernetes.io/part-of: nacos-controller
+    app.kubernetes.io/managed-by: kustomize
+  name: dynamicconfiguration-viewer-role
+rules:
+- apiGroups:
+  - nacos.io.nacos.io
+  resources:
+  - dynamicconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - nacos.io.nacos.io
+  resources:
+  - dynamicconfigurations/status
+  verbs:
+  - get

@@ -1,0 +1,12 @@
+apiVersion: nacos.io.nacos.io/v1
+kind: DynamicConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/name: dynamicconfiguration
+    app.kubernetes.io/instance: dynamicconfiguration-sample
+    app.kubernetes.io/part-of: nacos-controller
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: nacos-controller
+  name: dynamicconfiguration-sample
+spec:
+  # TODO(user): Add fields here
