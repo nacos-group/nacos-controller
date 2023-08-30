@@ -1,0 +1,52 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-nacos-io-v1-dynamicconfiguration
+  failurePolicy: Fail
+  name: mdynamicconfiguration.kb.io
+  rules:
+  - apiGroups:
+    - nacos.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dynamicconfigurations
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-nacos-io-v1-dynamicconfiguration
+  failurePolicy: Fail
+  name: vdynamicconfiguration.kb.io
+  rules:
+  - apiGroups:
+    - nacos.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dynamicconfigurations
+  sideEffects: None
