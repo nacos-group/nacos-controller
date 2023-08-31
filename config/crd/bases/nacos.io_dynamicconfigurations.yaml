@@ -117,8 +117,6 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
-                  edasNamespace:
-                    type: string
                   endpoint:
                     type: string
                   group:

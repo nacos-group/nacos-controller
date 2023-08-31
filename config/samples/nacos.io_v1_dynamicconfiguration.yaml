@@ -1,4 +1,4 @@
-apiVersion: nacos.io.nacos.io/v1
+apiVersion: nacos.io/v1
 kind: DynamicConfiguration
 metadata:
   labels:

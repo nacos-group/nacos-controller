@@ -86,12 +86,11 @@ const (
 )
 
 type NacosServerConfiguration struct {
-	EdasNamespace *string            `json:"edasNamespace,omitempty"`
-	Endpoint      *string            `json:"endpoint,omitempty"`
-	ServerAddr    *string            `json:"serverAddr,omitempty"`
-	Namespace     string             `json:"namespace,omitempty"`
-	Group         string             `json:"group,omitempty"`
-	AuthRef       v1.ObjectReference `json:"authRef,omitempty"`
+	Endpoint   *string            `json:"endpoint,omitempty"`
+	ServerAddr *string            `json:"serverAddr,omitempty"`
+	Namespace  string             `json:"namespace,omitempty"`
+	Group      string             `json:"group,omitempty"`
+	AuthRef    v1.ObjectReference `json:"authRef,omitempty"`
 }
 
 type SyncStatus struct {

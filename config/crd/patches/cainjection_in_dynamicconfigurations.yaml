@@ -4,4 +4,4 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: CERTIFICATE_NAMESPACE/CERTIFICATE_NAME
-  name: dynamicconfigurations.nacos.io.nacos.io
+  name: dynamicconfigurations.nacos.io

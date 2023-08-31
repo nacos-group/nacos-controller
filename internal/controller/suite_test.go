@@ -17,7 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"k8s.io/utils/pointer"
+	"os"
 	"path/filepath"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	nacosiov1 "nacos-controller/api/v1"
+	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -40,6 +45,8 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var ctx context.Context
+var cancel context.CancelFunc
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -51,9 +58,12 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
+	ensureEnvKeyExist("KUBECONFIG")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
+		Config:                config.GetConfigOrDie(),
+		UseExistingCluster:    pointer.Bool(true),
 	}
 
 	var err error
@@ -64,6 +74,15 @@ var _ = BeforeSuite(func() {
 
 	err = nacosiov1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	ctx, cancel = context.WithCancel(context.Background())
+
+	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme()).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
 
@@ -71,10 +90,20 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	go func() {
+		err = k8sManager.Start(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	}()
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+	cleanDynamicConfigurationTestResource()
+	cancel()
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
+
+func ensureEnvKeyExist(key string) {
+	Expect(len(os.Getenv(key)) > 0).Should(BeTrue(), "missing env key: "+key)
+}

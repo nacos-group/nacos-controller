@@ -31,8 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	nacosiov1 "nacos-controller/api/v1"
-	"nacos-controller/internal/controller"
+	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -89,17 +89,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.DynamicConfigurationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = controller.NewDynamicConfigurationReconciler(mgr.GetClient(), mgr.GetScheme()).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DynamicConfiguration")
 		os.Exit(1)
 	}
-	if err = (&nacosiov1.DynamicConfiguration{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "DynamicConfiguration")
-		os.Exit(1)
-	}
+	//if err = (&nacosiov1.DynamicConfiguration{}).SetupWebhookWithManager(mgr); err != nil {
+	//	setupLog.Error(err, "unable to create webhook", "webhook", "DynamicConfiguration")
+	//	os.Exit(1)
+	//}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

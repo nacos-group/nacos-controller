@@ -16,7 +16,7 @@ limitations under the License.
 
 // Package v1 contains API Schema definitions for the nacos.io v1 API group
 // +kubebuilder:object:generate=true
-// +groupName=nacos.io.nacos.io
+// +groupName=nacos.io
 package v1
 
 import (
