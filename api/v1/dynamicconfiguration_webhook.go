@@ -17,7 +17,10 @@ limitations under the License.
 package v1
 
 import (
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -43,7 +46,12 @@ var _ webhook.Defaulter = &DynamicConfiguration{}
 func (r *DynamicConfiguration) Default() {
 	dynamicconfigurationlog.Info("default", "name", r.Name)
 
-	// TODO(user): fill in your defaulting logic.
+	if r.Spec.Strategy.SyncPolicy == "" {
+		r.Spec.Strategy.SyncPolicy = IfAbsent
+	}
+	if r.Spec.Strategy.SyncDirection == "" {
+		r.Spec.Strategy.SyncDirection = Cluster2Server
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -56,7 +64,7 @@ func (r *DynamicConfiguration) ValidateCreate() (admission.Warnings, error) {
 	dynamicconfigurationlog.Info("validate create", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object creation.
-	return nil, nil
+	return nil, r.validateDC()
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
@@ -64,7 +72,7 @@ func (r *DynamicConfiguration) ValidateUpdate(old runtime.Object) (admission.War
 	dynamicconfigurationlog.Info("validate update", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object update.
-	return nil, nil
+	return nil, r.validateDC()
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
@@ -73,4 +81,73 @@ func (r *DynamicConfiguration) ValidateDelete() (admission.Warnings, error) {
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil
+}
+
+func (r *DynamicConfiguration) validateDC() error {
+	var allErrs field.ErrorList
+	if err := r.validateNacosServerConfiguration(); err != nil {
+		allErrs = append(allErrs, err)
+	}
+	if err := r.validateObjectRef(); err != nil {
+		allErrs = append(allErrs, err)
+	}
+	if err := r.validateSyncStrategy(); err != nil {
+		allErrs = append(allErrs, err)
+	}
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return errors.NewInvalid(
+		schema.GroupKind{Group: "nacos.io", Kind: "DynamicConfiguration"},
+		r.Name,
+		allErrs)
+}
+
+func (r *DynamicConfiguration) validateNacosServerConfiguration() *field.Error {
+	serverAddrEmpty := r.Spec.NacosServer.ServerAddr == nil || len(*r.Spec.NacosServer.ServerAddr) == 0
+	endpoint := r.Spec.NacosServer.Endpoint == nil || len(*r.Spec.NacosServer.Endpoint) == 0
+	if serverAddrEmpty && endpoint {
+		return field.Required(field.NewPath("spec").Child("nacosServer"), "either ServerAddr or Endpoint should be set")
+	}
+	return nil
+}
+
+func (r *DynamicConfiguration) validateObjectRef() *field.Error {
+	if r.Spec.Strategy.SyncDirection != Cluster2Server {
+		return nil
+	}
+	if r.Spec.ObjectRef == nil {
+		return field.Required(field.NewPath("spec").Child("objectRef"), "ObjectRef should be set when SyncDirection is cluster2server")
+	}
+	return nil
+}
+
+func (r *DynamicConfiguration) validateSyncStrategy() *field.Error {
+	syncDirectionSupportList := []string{string(Cluster2Server), string(Server2Cluster)}
+	if !stringsContains(syncDirectionSupportList, string(r.Spec.Strategy.SyncDirection)) {
+		return field.NotSupported(
+			field.NewPath("spec").Child("strategy").Child("syncDirection"),
+			r.Spec.Strategy.SyncDirection,
+			syncDirectionSupportList)
+	}
+	syncPolicySupportList := []string{string(Always), string(IfAbsent)}
+	if !stringsContains(syncPolicySupportList, string(r.Spec.Strategy.SyncPolicy)) {
+		return field.NotSupported(
+			field.NewPath("spec").Child("strategy").Child("syncPolicy"),
+			r.Spec.Strategy.SyncPolicy,
+			syncPolicySupportList)
+	}
+	return nil
+}
+
+func stringsContains(arr []string, item string) bool {
+	if len(arr) == 0 {
+		return false
+	}
+	for _, v := range arr {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }

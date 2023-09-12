@@ -33,18 +33,18 @@ type DynamicConfigurationSpec struct {
 	AdditionalConf *AdditionalConfiguration `json:"additionalConf,omitempty"`
 	Strategy       SyncStrategy             `json:"strategy,omitempty"`
 	NacosServer    NacosServerConfiguration `json:"nacosServer,omitempty"`
-	ObjectRef      v1.ObjectReference       `json:"objectRef,omitempty"`
+	ObjectRef      *v1.ObjectReference      `json:"objectRef,omitempty"`
 }
 
 // DynamicConfigurationStatus defines the observed state of DynamicConfiguration
 type DynamicConfigurationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Phase              string             `json:"phase,omitempty"`
-	Message            string             `json:"message,omitempty"`
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	SyncStatuses       []SyncStatus       `json:"syncStatuses,omitempty"`
-	ObjectRef          v1.ObjectReference `json:"objectRef,omitempty"`
+	Phase              string              `json:"phase,omitempty"`
+	Message            string              `json:"message,omitempty"`
+	ObservedGeneration int64               `json:"observedGeneration,omitempty"`
+	SyncStatuses       []SyncStatus        `json:"syncStatuses,omitempty"`
+	ObjectRef          *v1.ObjectReference `json:"objectRef,omitempty"`
 }
 
 //+kubebuilder:object:root=true

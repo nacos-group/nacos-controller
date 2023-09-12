@@ -156,6 +156,6 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 	if len(errDataIdList) > 0 {
 		return fmt.Errorf("err dataIds: %s", strings.Join(errDataIdList, ","))
 	}
-	dc.Status.ObjectRef = objRef
+	dc.Status.ObjectRef = &objRef
 	return nil
 }
