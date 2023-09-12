@@ -29,6 +29,10 @@ import (
 
 // log is for logging in this package.
 var dynamicconfigurationlog = logf.Log.WithName("dynamicconfiguration-resource")
+var (
+	SecretGVK    = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"}
+	ConfigMapGVK = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"}
+)
 
 func (r *DynamicConfiguration) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
@@ -109,6 +113,27 @@ func (r *DynamicConfiguration) validateNacosServerConfiguration() *field.Error {
 	if serverAddrEmpty && endpoint {
 		return field.Required(field.NewPath("spec").Child("nacosServer"), "either ServerAddr or Endpoint should be set")
 	}
+	if len(r.Spec.NacosServer.Namespace) == 0 {
+		return field.Required(field.NewPath("spec").Child("namespace"), "nacos namespaceId should be set")
+	}
+	if len(r.Spec.NacosServer.Group) == 0 {
+		return field.Required(field.NewPath("spec").Child("group"), "nacos group should be set")
+	}
+	if r.Spec.NacosServer.AuthRef == nil {
+		return field.Required(field.NewPath("spec").Child("group"), "nacos auth reference should be set")
+	} else {
+		supportGVKs := []string{SecretGVK.String()}
+		gvk := r.Spec.NacosServer.AuthRef.GroupVersionKind().String()
+		if !stringsContains(supportGVKs, gvk) {
+			return field.NotSupported(
+				field.NewPath("spec").Child("nacosServer").Child("authRef").Child("group"),
+				r.Spec.NacosServer.AuthRef,
+				supportGVKs)
+		}
+	}
+	if r.Spec.DataIds == nil || len(r.Spec.DataIds) == 0 {
+		return field.Required(field.NewPath("spec").Child("dataIds"), "at least one dataId should be set")
+	}
 	return nil
 }
 
@@ -118,6 +143,15 @@ func (r *DynamicConfiguration) validateObjectRef() *field.Error {
 	}
 	if r.Spec.ObjectRef == nil {
 		return field.Required(field.NewPath("spec").Child("objectRef"), "ObjectRef should be set when SyncDirection is cluster2server")
+	} else {
+		supportGVKs := []string{ConfigMapGVK.String()}
+		gvk := r.Spec.ObjectRef.GroupVersionKind().String()
+		if !stringsContains(supportGVKs, gvk) {
+			return field.NotSupported(
+				field.NewPath("spec").Child("objectRef"),
+				r.Spec.ObjectRef,
+				supportGVKs)
+		}
 	}
 	return nil
 }

@@ -52,7 +52,7 @@ func getNacosClientParams(c client.Client, dc *nacosiov1.DynamicConfiguration) (
 		return nil, fmt.Errorf("empty DynamicConfiguration")
 	}
 	serverConf := &dc.Spec.NacosServer
-	authInfo, err := getNacosAuthInfo(c, dc.Namespace, serverConf.AuthRef)
+	authInfo, err := getNacosAuthInfo(c, dc.Namespace, *serverConf.AuthRef)
 	if err != nil {
 		return nil, err
 	}
