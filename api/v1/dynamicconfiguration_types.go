@@ -48,7 +48,10 @@ type DynamicConfigurationStatus struct {
 }
 
 //+kubebuilder:object:root=true
+//+kubebuilder:resource:shortName=dc
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // DynamicConfiguration is the Schema for the dynamicconfigurations API
 type DynamicConfiguration struct {
