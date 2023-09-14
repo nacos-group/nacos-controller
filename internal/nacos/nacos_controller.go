@@ -122,11 +122,13 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 	}
 	group := dc.Spec.NacosServer.Group
 	syncFrom := "cluster"
+	l = l.WithValues("group", group, "namespace", dc.Spec.NacosServer.Namespace)
 	var errDataIdList []string
 	for _, dataId := range dc.Spec.DataIds {
+		logWithId := l.WithValues("dataId", dataId)
 		content, exist, err := objWrapper.GetContent(dataId)
 		if err != nil {
-			l.Error(err, "read content from object reference error", "dataId", dataId, "objRef", objRef.String())
+			logWithId.Error(err, "read content from object reference error", "objRef", objRef.String())
 			errDataIdList = append(errDataIdList, dataId)
 			continue
 		}
@@ -135,7 +137,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 		lastSyncStatus := GetSyncStatusByDataId(dc.Status.SyncStatuses, dataId)
 		if lastSyncStatus != nil && lastSyncStatus.Ready {
 			if contentMd5 == lastSyncStatus.Md5 {
-				l.Info("skip syncing, due to same md5 of content", "md5", contentMd5, "dataId", dataId)
+				logWithId.Info("skip syncing, due to same md5 of content", "md5", contentMd5)
 				continue
 			}
 		}
@@ -146,9 +148,9 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 					Group:  group,
 					DataId: dataId,
 				})
-				l.Info("dataId deleted in nacos server", "dataId", dataId)
+				logWithId.Info("dataId deleted in nacos server")
 				if err != nil {
-					l.Error(err, "delete dataId error", "dataId", dataId)
+					logWithId.Error(err, "delete dataId error")
 					errDataIdList = append(errDataIdList, dataId)
 					UpdateSyncStatus(dc, dataId, contentMd5, syncFrom, metav1.Now(), false, err.Error())
 					continue
@@ -164,13 +166,13 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 				DataId: dataId,
 			})
 			if err != nil {
-				l.Error(err, "get dataId error", "dataId", dataId)
+				logWithId.Error(err, "get dataId error")
 				errDataIdList = append(errDataIdList, dataId)
 				UpdateSyncStatus(dc, dataId, contentMd5, syncFrom, metav1.Now(), false, err.Error())
 				continue
 			}
 			if len(conf) > 0 {
-				l.Info("skip syncing, due to SyncPolicy IfAbsent and server has config already.", "dataId", dataId)
+				logWithId.Info("skip syncing, due to SyncPolicy IfAbsent and server has config already.")
 				UpdateSyncStatus(dc, dataId, lastSyncStatus.Md5, lastSyncStatus.LastSyncFrom, lastSyncStatus.LastSyncTime, true, "skipped, due to SyncPolicy IfAbsent")
 				continue
 			}
@@ -181,12 +183,12 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 			Content: content,
 		})
 		if err != nil {
-			l.Error(err, "publish config error", "dataId", dataId)
+			logWithId.Error(err, "publish config error")
 			errDataIdList = append(errDataIdList, dataId)
 			UpdateSyncStatus(dc, dataId, contentMd5, syncFrom, metav1.Now(), false, err.Error())
 			continue
 		}
-		l.Info("published dataId: " + dataId)
+		logWithId.Info("config published to nacos server")
 		UpdateSyncStatus(dc, dataId, contentMd5, syncFrom, metav1.Now(), true, "")
 	}
 
@@ -245,12 +247,13 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 	anyContentChanged := false
 	syncIfAbsent := dc.Spec.Strategy.SyncPolicy == nacosiov1.IfAbsent
 	for _, dataId := range dc.Spec.DataIds {
+		logWithId := l.WithValues("dataId", dataId)
 		content, err := configClient.GetConfig(vo.ConfigParam{
 			Group:  group,
 			DataId: dataId,
 		})
 		if err != nil {
-			l.Error(err, "read content from server error", "dataId", dataId)
+			logWithId.Error(err, "read content from server error")
 			errDataIdList = append(errDataIdList, dataId)
 			UpdateSyncStatus(dc, dataId, "", "server", metav1.Now(), false, "read content from server error: "+err.Error())
 			continue
@@ -262,18 +265,18 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 		}
 		oldContent, exist, err := objWrapper.GetContent(dataId)
 		if err != nil {
-			l.Error(err, "read object reference content error", "dataId", dataId)
+			logWithId.Error(err, "read object reference content error")
 			errDataIdList = append(errDataIdList, dataId)
 			UpdateSyncStatus(dc, dataId, "", "server", metav1.Now(), false, "read object reference content error: "+err.Error())
 			continue
 		}
 		if exist && syncIfAbsent {
-			l.Info("skipped due to sync policy IfAbsent", "dataId", dataId)
+			logWithId.Info("skipped due to sync policy IfAbsent", "dataId", dataId)
 			continue
 		} else if !exist || CalcMd5(oldContent) != CalcMd5(content) {
 			anyContentChanged = true
 			if err := objWrapper.StoreContent(dataId, content); err != nil {
-				l.Error(err, "store content to object reference error", "dataId", dataId, "content", content, "obj", objectRef)
+				logWithId.Error(err, "store content to object reference error", "content", content, "obj", objectRef)
 				errDataIdList = append(errDataIdList, dataId)
 				UpdateSyncStatus(dc, dataId, "", "server", metav1.Now(), false, "store content to object reference error: "+err.Error())
 				continue
@@ -293,11 +296,11 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 				OnChange: scc.server2ClusterCallback,
 			})
 			if err != nil {
-				l.Error(err, "listen dataId error", "dataId", dataId)
+				logWithId.Error(err, "listen dataId error")
 				errDataIdList = append(errDataIdList, dataId)
 				continue
 			}
-			l.Info("start listening from nacos server", "dataId", dataId, "group", group, "namespace", namespace)
+			logWithId.Info("start listening from nacos server")
 			scc.mappings.AddMapping(namespace, group, dataId, nn)
 		}
 	}
@@ -365,34 +368,35 @@ func (scc *SyncConfigurationController) server2ClusterCallback(namespace, group,
 
 func (scc *SyncConfigurationController) server2ClusterCallbackOneDC(ctx context.Context, namespace, group, dataId, content string, nn types.NamespacedName) error {
 	l := log.FromContext(ctx)
+	l = l.WithValues("dc", nn)
 	dc := nacosiov1.DynamicConfiguration{}
 	if err := scc.Get(ctx, nn, &dc); err != nil {
 		if errors.IsNotFound(err) {
 			scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-			l.Info("mapping removed due to dc not found", "dc", nn)
+			l.Info("mapping removed due to dc not found")
 			return nil
 		}
-		l.Error(err, "get DynamicConfiguration error", "dc", nn)
+		l.Error(err, "get DynamicConfiguration error")
 		return err
 	}
 	if !StringSliceContains(dc.Spec.DataIds, dataId) {
 		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to dataId not found in spec.DataIds", "dc", nn)
+		l.Info("mapping removed due to dataId not found in spec.DataIds")
 		return nil
 	}
 	if dc.Spec.NacosServer.Namespace != namespace {
 		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to namespace changed", "dc", nn, "namespace from server", namespace, "namespace in dc", dc.Spec.NacosServer.Namespace)
+		l.Info("mapping removed due to namespace changed", "namespace from server", namespace, "namespace in dc", dc.Spec.NacosServer.Namespace)
 		return nil
 	}
 	if dc.Spec.NacosServer.Group != group {
 		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to group changed", "dc", nn, "group from server", group, "group in dc", dc.Spec.NacosServer.Group)
+		l.Info("mapping removed due to group changed", "group from server", group, "group in dc", dc.Spec.NacosServer.Group)
 		return nil
 	}
 	if dc.Status.ObjectRef == nil {
-		err := fmt.Errorf("ObjectRefence empty in status")
-		l.Error(err, "dc", nn)
+		err := fmt.Errorf("ObjectReference empty in status")
+		l.Error(err, "ObjectReference empty in status")
 		return err
 	}
 
@@ -400,7 +404,7 @@ func (scc *SyncConfigurationController) server2ClusterCallbackOneDC(ctx context.
 	objRef.Namespace = dc.Namespace
 	objWrapper, err := NewObjectReferenceWrapper(scc.Client, &dc, objRef)
 	if err != nil {
-		l.Error(err, "create object wrapper error", "objRef", objRef, "dc", nn)
+		l.Error(err, "create object wrapper error", "objRef", objRef)
 		return err
 	}
 	oldContent, _, err := objWrapper.GetContent(dataId)
@@ -410,7 +414,7 @@ func (scc *SyncConfigurationController) server2ClusterCallbackOneDC(ctx context.
 	}
 	newMd5 := CalcMd5(content)
 	if newMd5 == CalcMd5(oldContent) {
-		l.Info("ignored due to same content", "dc", nn, "md5", newMd5)
+		l.Info("ignored due to same content", "md5", newMd5)
 		UpdateSyncStatusIfAbsent(&dc, dataId, newMd5, "server", metav1.Now(), true, "skipped due to same md5")
 		return nil
 	}
