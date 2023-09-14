@@ -83,13 +83,13 @@ var _ = Describe("DynamicConfigurationController", func() {
 						Endpoint:  pointer.String(os.Getenv(nacosServerEndpoint)),
 						Namespace: os.Getenv(nacosServerNamespace),
 						Group:     fmt.Sprintf("suite-test-group-%d", randInt),
-						AuthRef: v1.ObjectReference{
+						AuthRef: &v1.ObjectReference{
 							Name:       dcTestNacosCredentialName,
 							APIVersion: "v1",
 							Kind:       "Secret",
 						},
 					},
-					ObjectRef: v1.ObjectReference{
+					ObjectRef: &v1.ObjectReference{
 						Name:       dcTestConfigMapName,
 						APIVersion: "v1",
 						Kind:       "ConfigMap",

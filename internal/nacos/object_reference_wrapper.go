@@ -5,20 +5,32 @@ import (
 	"fmt"
 	"github.com/nacos-group/nacos-controller/internal"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 )
 
 type ObjectReferenceWrapper interface {
+	//GetContent return content by dataId
 	GetContent(dataId string) (string, bool, error)
+	//StoreContent store content by dataId, return err if happened
 	StoreContent(dataId string, content string) error
+	//StoreAllContent store a map with dataId as key and content as value, return true if any content changed and error
+	StoreAllContent(map[string]string) (bool, error)
+	//DeleteContent remove a dataId
+	DeleteContent(dataId string) error
+	//InjectLabels to ObjectReference
 	InjectLabels(map[string]string)
+	//Flush write all content to ObjectReference
 	Flush() error
+	//Reload load ObjectReference, create it when not found
 	Reload() error
 }
 
-func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef v1.ObjectReference) (ObjectReferenceWrapper, error) {
+func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
 	switch objRef.GroupVersionKind().String() {
 	case ConfigMapGVK.String():
 		return &ConfigMapWrapper{
@@ -32,7 +44,7 @@ func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef v1.O
 }
 
 type ConfigMapWrapper struct {
-	ObjectRef v1.ObjectReference
+	ObjectRef *v1.ObjectReference
 	cm        *v1.ConfigMap
 	owner     client.Object
 	client.Client
@@ -76,6 +88,40 @@ func (cmw *ConfigMapWrapper) StoreContent(dataId string, content string) error {
 	return nil
 }
 
+func (cmw *ConfigMapWrapper) DeleteContent(dataId string) error {
+	if cmw.cm == nil {
+		if err := cmw.Reload(); err != nil {
+			return err
+		}
+	}
+	if _, ok := cmw.cm.Data[dataId]; ok {
+		delete(cmw.cm.Data, dataId)
+		return nil
+	}
+	if _, ok := cmw.cm.BinaryData[dataId]; ok {
+		delete(cmw.cm.Data, dataId)
+		return nil
+	}
+	return nil
+}
+
+func (cmw *ConfigMapWrapper) StoreAllContent(dataMap map[string]string) (bool, error) {
+	changed := false
+	for dataId, newContent := range dataMap {
+		if !changed {
+			if oldContent, exist, err := cmw.GetContent(dataId); err != nil {
+				return false, err
+			} else if !exist || CalcMd5(newContent) != CalcMd5(oldContent) {
+				changed = true
+			}
+		}
+		if err := cmw.StoreContent(dataId, newContent); err != nil {
+			return false, err
+		}
+	}
+	return changed, nil
+}
+
 func (cmw *ConfigMapWrapper) Flush() error {
 	if cmw.cm == nil {
 		return nil
@@ -103,7 +149,29 @@ func (cmw *ConfigMapWrapper) InjectLabels(labels map[string]string) {
 func (cmw *ConfigMapWrapper) Reload() error {
 	cm := v1.ConfigMap{}
 	if err := cmw.Get(context.TODO(), types.NamespacedName{Namespace: cmw.ObjectRef.Namespace, Name: cmw.ObjectRef.Name}, &cm); err != nil {
-		return err
+		if errors.IsNotFound(err) {
+			// if not found, try to create object reference
+			cm.Namespace = cmw.ObjectRef.Namespace
+			cm.Name = cmw.ObjectRef.Name
+
+			owner := cmw.owner
+			apiVersion, kind := owner.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
+			cm.SetOwnerReferences([]v12.OwnerReference{
+				{
+					APIVersion:         apiVersion,
+					Kind:               kind,
+					Name:               owner.GetName(),
+					UID:                owner.GetUID(),
+					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: pointer.Bool(true),
+				},
+			})
+			if err := cmw.Create(context.TODO(), &cm); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 	cmw.cm = &cm
 	return cmw.ensureOwnerLabel()

@@ -49,16 +49,14 @@ const (
 type DynamicConfigurationReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
-	controller nacos.SyncConfigurationController
+	controller *nacos.SyncConfigurationController
 }
 
 func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme) *DynamicConfigurationReconciler {
 	return &DynamicConfigurationReconciler{
-		Client: c,
-		Scheme: s,
-		controller: nacos.SyncConfigurationController{
-			Client: c,
-		},
+		Client:     c,
+		Scheme:     s,
+		controller: nacos.NewSyncConfigurationController(c),
 	}
 }
 
@@ -76,8 +74,7 @@ func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme) *Dyna
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *DynamicConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	l := log.FromContext(ctx, "namespace", req.Namespace, "name", req.Name)
-	ctx = log.IntoContext(ctx, l)
+	l := log.FromContext(ctx)
 
 	dc := nacosiov1.DynamicConfiguration{}
 	if err := r.Get(ctx, types.NamespacedName{

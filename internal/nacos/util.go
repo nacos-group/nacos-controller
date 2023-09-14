@@ -107,7 +107,7 @@ func GetOrCreateNacosConfigClient(c client.Client, dc *nacosiov1.DynamicConfigur
 		return nil, err
 	}
 	// 简化判空逻辑，cacheKey仅内部使用
-	cacheKey := fmt.Sprintf("%s-%s-%s", clientParams.Namespace, clientParams.ServerAddr, clientParams.Namespace)
+	cacheKey := fmt.Sprintf("%s-%s-%s", clientParams.Endpoint, clientParams.ServerAddr, clientParams.Namespace)
 	cachedClient, ok := nacosConfigClientCache.Load(cacheKey)
 	if ok && cachedClient != nil {
 		return cachedClient.(config_client.IConfigClient), nil
@@ -162,4 +162,13 @@ func CalcMd5(s string) string {
 	}
 	sum := md5.Sum([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+
+func StringSliceContains(arr []string, item string) bool {
+	for _, v := range arr {
+		if v == item {
+			return true
+		}
+	}
+	return false
 }
