@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/internal/controller"
+	"github.com/nacos-group/nacos-controller/pkg/controller"
 	//+kubebuilder:scaffold:imports
 )
 

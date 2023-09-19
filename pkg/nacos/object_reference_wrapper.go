@@ -3,7 +3,7 @@ package nacos
 import (
 	"context"
 	"fmt"
-	"github.com/nacos-group/nacos-controller/internal"
+	"github.com/nacos-group/nacos-controller/pkg"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -184,8 +184,8 @@ func (cmw *ConfigMapWrapper) ensureOwnerLabel() error {
 	if cmw.cm.Labels == nil {
 		cmw.cm.Labels = map[string]string{}
 	}
-	if v, ok := cmw.cm.Labels[internal.ConfigMapLabel]; !ok || v != cmw.owner.GetName() {
-		cmw.cm.Labels[internal.ConfigMapLabel] = cmw.owner.GetName()
+	if v, ok := cmw.cm.Labels[pkg.ConfigMapLabel]; !ok || v != cmw.owner.GetName() {
+		cmw.cm.Labels[pkg.ConfigMapLabel] = cmw.owner.GetName()
 		return cmw.Flush()
 	}
 	return nil

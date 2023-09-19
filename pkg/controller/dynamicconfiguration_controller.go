@@ -19,8 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/nacos-group/nacos-controller/internal"
-	"github.com/nacos-group/nacos-controller/internal/nacos"
+	"github.com/nacos-group/nacos-controller/pkg"
+	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -105,7 +105,7 @@ func (r *DynamicConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 }
 
 func (r *DynamicConfigurationReconciler) ensureFinalizer(ctx context.Context, obj client.Object) error {
-	if internal.Contains(obj.GetFinalizers(), FinalizerName) {
+	if pkg.Contains(obj.GetFinalizers(), FinalizerName) {
 		return nil
 	}
 	l := log.FromContext(ctx)
@@ -119,7 +119,7 @@ func (r *DynamicConfigurationReconciler) ensureFinalizer(ctx context.Context, ob
 }
 
 func (r *DynamicConfigurationReconciler) doFinalization(ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
-	if !internal.Contains(dc.GetFinalizers(), FinalizerName) {
+	if !pkg.Contains(dc.GetFinalizers(), FinalizerName) {
 		return nil
 	}
 	l := log.FromContext(ctx)
@@ -132,7 +132,7 @@ func (r *DynamicConfigurationReconciler) doFinalization(ctx context.Context, dc 
 		return err
 	}
 	l.Info("Remove finalizer")
-	dc.SetFinalizers(internal.Remove(dc.GetFinalizers(), FinalizerName))
+	dc.SetFinalizers(pkg.Remove(dc.GetFinalizers(), FinalizerName))
 	if err := r.Update(ctx, dc); err != nil {
 		l.Error(err, "remove finalizer error")
 	}
@@ -141,7 +141,7 @@ func (r *DynamicConfigurationReconciler) doFinalization(ctx context.Context, dc 
 
 func (r *DynamicConfigurationReconciler) findDynamicConfiguration(ctx context.Context, obj client.Object) []reconcile.Request {
 	labels := obj.GetLabels()
-	v, ok := labels[internal.ConfigMapLabel]
+	v, ok := labels[pkg.ConfigMapLabel]
 	if !ok {
 		return []reconcile.Request{}
 	}

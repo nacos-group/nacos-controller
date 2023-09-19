@@ -9,7 +9,7 @@ WORKDIR /workspace/src/github.com/nacos-group/nacos-controller/
 # Copy the go source
 COPY cmd/main.go cmd/main.go
 COPY api/ api/
-COPY internal/ internal/
+COPY pkg/ pkg/
 COPY vendor/ vendor/
 
 # Build
