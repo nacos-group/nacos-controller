@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -19,15 +20,22 @@ import (
 
 type SyncConfigurationController struct {
 	client.Client
-	mappings *DataId2DCMappings
-	locks    *LockManager
+	mappings     *DataId2DCMappings
+	locks        *LockManager
+	authManager  *auth.NacosAuthManager
+	authProvider auth.NacosAuthProvider
 }
 
-func NewSyncConfigurationController(c client.Client) *SyncConfigurationController {
+func NewSyncConfigurationController(c client.Client, authProvider auth.NacosAuthProvider) *SyncConfigurationController {
+	if authProvider == nil {
+		authProvider = &auth.DefaultNaocsAuthProvider{Client: c}
+	}
 	return &SyncConfigurationController{
-		Client:   c,
-		mappings: NewDataId2DCMappings(),
-		locks:    NewLockManager(),
+		Client:       c,
+		mappings:     NewDataId2DCMappings(),
+		locks:        NewLockManager(),
+		authManager:  auth.GetNacosAuthManger(),
+		authProvider: authProvider,
 	}
 }
 
@@ -76,7 +84,7 @@ func (scc *SyncConfigurationController) finalizeCluster2Server(ctx context.Conte
 		return nil
 	}
 	l := log.FromContext(ctx)
-	configClient, err := GetOrCreateNacosConfigClient(scc.Client, dc)
+	configClient, err := scc.authManager.GetNacosConfigClient(scc.authProvider, dc)
 	if err != nil {
 		return err
 	}
@@ -103,7 +111,7 @@ func (scc *SyncConfigurationController) finalizeCluster2Server(ctx context.Conte
 // Compare content from objectRef with nacos server, and update nacos server side depend on dc.spec.strategy.syncPolicy
 func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
 	l := log.FromContext(ctx)
-	configClient, err := GetOrCreateNacosConfigClient(scc.Client, dc)
+	configClient, err := scc.authManager.GetNacosConfigClient(scc.authProvider, dc)
 	if err != nil {
 		l.Error(err, "create nacos config client error")
 		return err
@@ -210,7 +218,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 
 func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
 	l := log.FromContext(ctx)
-	configClient, err := GetOrCreateNacosConfigClient(scc.Client, dc)
+	configClient, err := scc.authManager.GetNacosConfigClient(scc.authProvider, dc)
 	if err != nil {
 		l.Error(err, "create nacos config client error")
 		return err

@@ -3,7 +3,7 @@ package controller
 import (
 	"fmt"
 	v12 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/pkg/nacos"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -252,7 +252,7 @@ func checkDynamicConfigurationStatus(dc *v12.DynamicConfiguration) {
 }
 
 func getContentByDataId(dc *v12.DynamicConfiguration) (string, bool) {
-	configClient, err := nacos.GetOrCreateNacosConfigClient(k8sClient, dc)
+	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{}, dc)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	content, err := configClient.GetConfig(vo.ConfigParam{
 		Group:  dc.Spec.NacosServer.Group,

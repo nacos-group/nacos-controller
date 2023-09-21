@@ -81,7 +81,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme()).SetupWithManager(k8sManager)
+	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme(), nil).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
