@@ -7,35 +7,53 @@ import (
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
-	"time"
 )
 
 type SyncConfigurationController struct {
 	client.Client
-	mappings     *DataId2DCMappings
-	locks        *LockManager
-	authManager  *auth.NacosAuthManager
-	authProvider auth.NacosAuthProvider
+	mappings                 *DataId2DCMappings
+	locks                    *LockManager
+	authManager              *auth.NacosAuthManager
+	authProvider             auth.NacosAuthProvider
+	server2ClusterCallbackFn func(namespace, group, dataId, content string)
 }
 
-func NewSyncConfigurationController(c client.Client, authProvider auth.NacosAuthProvider) *SyncConfigurationController {
-	if authProvider == nil {
-		authProvider = &auth.DefaultNaocsAuthProvider{Client: c}
+type SyncConfigOptions struct {
+	AuthManger   *auth.NacosAuthManager
+	AuthProvider auth.NacosAuthProvider
+	Callback     Server2ClusterCallback
+	Mappings     *DataId2DCMappings
+	Locks        *LockManager
+}
+
+func NewSyncConfigurationController(c client.Client, opt SyncConfigOptions) *SyncConfigurationController {
+	if opt.AuthProvider == nil {
+		opt.AuthProvider = &auth.DefaultNaocsAuthProvider{Client: c}
+	}
+	if opt.AuthManger == nil {
+		opt.AuthManger = auth.GetNacosAuthManger()
+	}
+	if opt.Mappings == nil {
+		opt.Mappings = NewDataId2DCMappings()
+	}
+	if opt.Locks == nil {
+		opt.Locks = NewLockManager()
+	}
+	if opt.Callback == nil {
+		opt.Callback = NewDefaultServer2ClusterCallback(c, opt.Mappings, opt.Locks)
 	}
 	return &SyncConfigurationController{
-		Client:       c,
-		mappings:     NewDataId2DCMappings(),
-		locks:        NewLockManager(),
-		authManager:  auth.GetNacosAuthManger(),
-		authProvider: authProvider,
+		Client:                   c,
+		mappings:                 opt.Mappings,
+		locks:                    opt.Locks,
+		authManager:              opt.AuthManger,
+		authProvider:             opt.AuthProvider,
+		server2ClusterCallbackFn: opt.Callback.Callback,
 	}
 }
 
@@ -305,7 +323,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 			err = configClient.ListenConfig(vo.ConfigParam{
 				Group:    group,
 				DataId:   dataId,
-				OnChange: scc.server2ClusterCallback,
+				OnChange: scc.server2ClusterCallbackFn,
 			})
 			if err != nil {
 				logWithId.Error(err, "listen dataId error")
@@ -350,90 +368,4 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 		return fmt.Errorf("error dataIds: " + strings.Join(errDataIdList, ","))
 	}
 	return nil
-}
-
-func (scc *SyncConfigurationController) server2ClusterCallback(namespace, group, dataId, content string) {
-	ctx := context.TODO()
-	l := log.FromContext(ctx, "namespace", namespace, "group", group, "dataId", dataId)
-	ctx = log.IntoContext(ctx, l)
-	l.Info("server2cluster callback")
-	dcNNList := scc.mappings.GetDCList(namespace, group, dataId)
-	for _, nn := range dcNNList {
-		if err := retry.RetryOnConflict(wait.Backoff{
-			Duration: 1 * time.Second,
-			Factor:   2,
-			Steps:    3,
-		}, func() error {
-			// 以DC纬度，锁住更新
-			l.Info("server2cluster callback for " + nn.String())
-			lockName := nn.String()
-			lock := scc.locks.GetLock(lockName)
-			lock.Lock()
-			defer lock.Unlock()
-			return scc.server2ClusterCallbackOneDC(ctx, namespace, group, dataId, content, nn)
-		}); err != nil {
-			l.Error(err, "update config failed", "dc", nn)
-		}
-	}
-	l.Info("server2cluster callback processed", "dcList", dcNNList)
-}
-
-func (scc *SyncConfigurationController) server2ClusterCallbackOneDC(ctx context.Context, namespace, group, dataId, content string, nn types.NamespacedName) error {
-	l := log.FromContext(ctx)
-	l = l.WithValues("dc", nn)
-	dc := nacosiov1.DynamicConfiguration{}
-	if err := scc.Get(ctx, nn, &dc); err != nil {
-		if errors.IsNotFound(err) {
-			scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-			l.Info("mapping removed due to dc not found")
-			return nil
-		}
-		l.Error(err, "get DynamicConfiguration error")
-		return err
-	}
-	if !StringSliceContains(dc.Spec.DataIds, dataId) {
-		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to dataId not found in spec.DataIds")
-		return nil
-	}
-	if dc.Spec.NacosServer.Namespace != namespace {
-		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to namespace changed", "namespace from server", namespace, "namespace in dc", dc.Spec.NacosServer.Namespace)
-		return nil
-	}
-	if dc.Spec.NacosServer.Group != group {
-		scc.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to group changed", "group from server", group, "group in dc", dc.Spec.NacosServer.Group)
-		return nil
-	}
-	if dc.Status.ObjectRef == nil {
-		err := fmt.Errorf("ObjectReference empty in status")
-		l.Error(err, "ObjectReference empty in status")
-		return err
-	}
-
-	objRef := dc.Status.ObjectRef.DeepCopy()
-	objRef.Namespace = dc.Namespace
-	objWrapper, err := NewObjectReferenceWrapper(scc.Client, &dc, objRef)
-	if err != nil {
-		l.Error(err, "create object wrapper error", "objRef", objRef)
-		return err
-	}
-	oldContent, _, err := objWrapper.GetContent(dataId)
-	if err != nil {
-		l.Error(err, "read content error")
-		return err
-	}
-	newMd5 := CalcMd5(content)
-	if newMd5 == CalcMd5(oldContent) {
-		l.Info("ignored due to same content", "md5", newMd5)
-		UpdateSyncStatusIfAbsent(&dc, dataId, newMd5, "server", metav1.Now(), true, "skipped due to same md5")
-		return nil
-	}
-	if err := objWrapper.StoreContent(dataId, content); err != nil {
-		l.Error(err, "update content error", "obj", objRef)
-		return err
-	}
-	UpdateSyncStatus(&dc, dataId, newMd5, "server", metav1.Now(), true, "")
-	return scc.Status().Update(ctx, &dc)
 }

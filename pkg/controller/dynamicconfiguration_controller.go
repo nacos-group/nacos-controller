@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -53,11 +52,11 @@ type DynamicConfigurationReconciler struct {
 	controller *nacos.SyncConfigurationController
 }
 
-func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme, provider auth.NacosAuthProvider) *DynamicConfigurationReconciler {
+func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme, opt nacos.SyncConfigOptions) *DynamicConfigurationReconciler {
 	return &DynamicConfigurationReconciler{
 		Client:     c,
 		Scheme:     s,
-		controller: nacos.NewSyncConfigurationController(c, provider),
+		controller: nacos.NewSyncConfigurationController(c, opt),
 	}
 }
 

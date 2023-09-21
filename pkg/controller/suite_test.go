@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"k8s.io/utils/pointer"
 	"os"
 	"path/filepath"
@@ -81,7 +82,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme(), nil).SetupWithManager(k8sManager)
+	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme(), nacos.SyncConfigOptions{}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
