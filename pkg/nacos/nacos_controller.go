@@ -181,7 +181,11 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 			}
 			if len(conf) > 0 {
 				logWithId.Info("skip syncing, due to SyncPolicy IfAbsent and server has config already.")
-				UpdateSyncStatus(dc, dataId, lastSyncStatus.Md5, lastSyncStatus.LastSyncFrom, lastSyncStatus.LastSyncTime, true, "skipped, due to SyncPolicy IfAbsent")
+				if lastSyncStatus != nil {
+					UpdateSyncStatus(dc, dataId, lastSyncStatus.Md5, lastSyncStatus.LastSyncFrom, lastSyncStatus.LastSyncTime, true, "skipped, due to SyncPolicy IfAbsent")
+				} else {
+					UpdateSyncStatus(dc, dataId, CalcMd5(conf), "cluster", metav1.Now(), true, "skipped, due to SyncPolicy IfAbsent")
+				}
 				continue
 			}
 		}
