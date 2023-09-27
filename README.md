@@ -1,94 +1,131 @@
-# nacos-controller
-// TODO(user): Add simple overview of use/purpose
+# Nacos Controller
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+This project includes a series of Kubernetes custom resources (CustomResourceDefinition) and their related controller implementations.
+The current version defines CRDs as follows:
 
-## Getting Started
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
+- DynamicConfiguration: Synchronization bridge between Nacos configuration and Kubernetes configuration.
 
-### Running on the cluster
-1. Install Instances of Custom Resources:
+[中文文档](./README_CN.md)
 
-```sh
-kubectl apply -f config/samples/
+## Quick Start
+### Deploy Nacos Controller
+// TBD
+
+### Sync configuration from Kubernetes to Nacos Server
+1. a Secret contains authorization information of nacos server, which is ak and sk
+2. a ConfigMap contains dataIds and their content
+3. a DynamicConfiguration, which defines the behaviour of synchronization
+    - spec.dataIds：defines which dataIds should be synced
+    - spec.nacosServer：defines the information of nacos server
+    - spec.strategy：defines the strategy of synchronization
+    - spec.objectRef：reference of object which contains dataIds and their content
+```yaml
+apiVersion: nacos.io/v1
+kind: DynamicConfiguration
+metadata:
+    name: dc-demo-cluster2server
+spec:
+  dataIds:
+  - data-id1.properties
+  - data-id2.yml
+  nacosServer:
+    endpoint: <your-nacos-server-endpoint>
+    namespace: <your-nacos-namespace-id>
+    group: <your-nacos-group>
+    authRef:
+      apiVersion: v1
+      kind: Secret
+      name: nacos-auth
+  strategy:
+    syncPolicy: Always
+    syncDirection: cluster2server
+    syncDeletion: true
+  objectRef:
+    apiVersion: v1
+    kind: ConfigMap
+    name: nacos-config-cm
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: nacos-config-cm
+    namespace: default
+data:
+    data-id1.properties: |
+      key=value
+      key2=value2
+    data-id2.yml: |
+      app:
+        name: test
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    ak: <base64 ak>
+    sk: <base64 sk>
 ```
 
-2. Build and push your image to the location specified by `IMG`:
+### Sync configuration from Nacos Server to Kubernetes
+1. a Secret contains authorization information of nacos server, which is ak and sk
+2. a ConfigMap to store dataIds and their content (Optional, controller will create if this object doesn't exist)
+3. a DynamicConfiguration, which defines the behaviour of synchronization
+    - spec.dataIds：defines which dataIds should be synced
+    - spec.nacosServer：defines the information of nacos server
+    - spec.strategy：defines the strategy of synchronization
+    - spec.objectRef：reference of object which contains dataIds and their content(Optional, if empty, controller will create a ConfigMap with same name as default object)
 
-```sh
-make docker-build docker-push IMG=<some-registry>/nacos-controller:tag
+```yaml
+apiVersion: nacos.io/v1
+kind: DynamicConfiguration
+metadata:
+    name: dc-demo-server2cluster
+spec:
+  dataIds:
+  - data-id1.properties
+  - data-id2.yml
+  nacosServer:
+    endpoint: <your-nacos-server-endpoint>
+    namespace: <your-nacos-namespace-id>
+    group: <your-nacos-group>
+    authRef:
+      apiVersion: v1
+      kind: Secret
+      name: nacos-auth
+  strategy:
+    syncPolicy: Always
+    syncDirection: server2cluster
+    syncDeletion: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    ak: <base64 ak>
+    sk: <base64 sk>
 ```
 
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+### NacosServer Configuration
+- endpoint: the address server of nacos server, conflict with serverAddr field, and higher priority than serverAddr field
+- serverAddr: the address of nacos server, conflict with endpoint field
+- namespace: the namespace id of nacos server
+- group: the group of nacos server
+- authRef: a reference of Object, which contains ak/sk of nacos server, currently only Secret is supported
 
-```sh
-make deploy IMG=<some-registry>/nacos-controller:tag
+```yaml
+  nacosServer:
+    endpoint: <your-nacos-server-endpoint>
+    serverAddr: <your-nacos-server-addr>
+    namespace: <your-nacos-namespace-id>
+    group: <your-nacos-group>
+    authRef:
+      apiVersion: v1
+      kind: Secret
+      name: nacos-auth
 ```
 
-### Uninstall CRDs
-To delete the CRDs from the cluster:
-
-```sh
-make uninstall
-```
-
-### Undeploy controller
-UnDeploy the controller from the cluster:
-
-```sh
-make undeploy
-```
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-### How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
-
-```sh
-make install
-```
-
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
-
-```sh
-make run
-```
-
-**NOTE:** You can also run this in one step by running: `make install run`
-
-### Modifying the API definitions
-If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
-
-```sh
-make manifests
-```
-
-**NOTE:** Run `make --help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2023.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 
