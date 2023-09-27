@@ -13,6 +13,17 @@ import (
 	"strings"
 )
 
+func init() {
+	// Using ConfigMapWrapper as default ConfigMap resource wrapper
+	RegisterObjectWrapperIfAbsent(ConfigMapGVK.String(), func(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
+		return &ConfigMapWrapper{
+			Client:    c,
+			ObjectRef: objRef,
+			owner:     owner,
+		}, nil
+	})
+}
+
 type ObjectReferenceWrapper interface {
 	//GetContent return content by dataId
 	GetContent(dataId string) (string, bool, error)
@@ -30,17 +41,29 @@ type ObjectReferenceWrapper interface {
 	Reload() error
 }
 
-func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
-	switch objRef.GroupVersionKind().String() {
-	case ConfigMapGVK.String():
-		return &ConfigMapWrapper{
-			Client:    c,
-			ObjectRef: objRef,
-			owner:     owner,
-		}, nil
-	default:
-		return nil, fmt.Errorf("unsupport object reference type: %s", objRef.GroupVersionKind().String())
+type NewObjectWrapperFn func(client.Client, client.Object, *v1.ObjectReference) (ObjectReferenceWrapper, error)
+
+var objectWrapperMap = map[string]NewObjectWrapperFn{}
+
+func RegisterObjectWrapperIfAbsent(targetGVK string, fn NewObjectWrapperFn) {
+	_, exist := objectWrapperMap[targetGVK]
+	if exist {
+		return
 	}
+	objectWrapperMap[targetGVK] = fn
+}
+
+func RegisterObjectWrapper(targetGVK string, fn NewObjectWrapperFn) {
+	objectWrapperMap[targetGVK] = fn
+}
+
+func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
+	targetGVK := objRef.GroupVersionKind().String()
+	fn, exist := objectWrapperMap[targetGVK]
+	if !exist {
+		return nil, fmt.Errorf("unsupport object reference type: %s", targetGVK)
+	}
+	return fn(c, owner, objRef)
 }
 
 type ConfigMapWrapper struct {
