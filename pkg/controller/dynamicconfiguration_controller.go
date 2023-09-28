@@ -75,7 +75,12 @@ func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme, opt n
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *DynamicConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
-
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("panic occurred")
+			l.Error(err, "panic", "req", req, "recover", r)
+		}
+	}()
 	dc := nacosiov1.DynamicConfiguration{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: req.Namespace,
