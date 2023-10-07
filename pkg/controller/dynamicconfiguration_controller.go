@@ -193,7 +193,7 @@ func updateStatus(dc *nacosiov1.DynamicConfiguration) {
 func (r *DynamicConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nacosiov1.DynamicConfiguration{}).
-		Watches(&v1.ConfigMap{},
+		WatchesMetadata(&v1.ConfigMap{},
 			runtimehandler.EnqueueRequestsFromMapFunc(r.findDynamicConfiguration)).
 		Complete(r)
 }
