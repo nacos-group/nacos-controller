@@ -78,7 +78,7 @@ type DynamicConfigurationSyncPolicy string
 
 const (
 	Always   DynamicConfigurationSyncPolicy = "Always"
-	IfAbsent DynamicConfigurationSyncPolicy = "IfAbscent"
+	IfAbsent DynamicConfigurationSyncPolicy = "IfAbsent"
 )
 
 type DynamicConfigurationSyncDirection string
