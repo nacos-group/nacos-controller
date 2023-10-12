@@ -113,9 +113,6 @@ func (r *DynamicConfiguration) validateNacosServerConfiguration() *field.Error {
 	if serverAddrEmpty && endpoint {
 		return field.Required(field.NewPath("spec").Child("nacosServer"), "either ServerAddr or Endpoint should be set")
 	}
-	if len(r.Spec.NacosServer.Namespace) == 0 {
-		return field.Required(field.NewPath("spec").Child("namespace"), "nacos namespaceId should be set")
-	}
 	if len(r.Spec.NacosServer.Group) == 0 {
 		return field.Required(field.NewPath("spec").Child("group"), "nacos group should be set")
 	}
