@@ -32,6 +32,11 @@ jobs:
       id-token: write
 
     steps:
+      - name: Set up Go 1.x
+          uses: actions/setup-go@v2
+          with:
+            go-version: 1.19
+
       - name: Checkout repository
         uses: actions/checkout@v3
 
