@@ -9,7 +9,16 @@ The current version defines CRDs as follows:
 
 ## Quick Start
 ### Deploy Nacos Controller
-// TBD
+1. Install helm，see [document](https://helm.sh/docs/intro/install/)
+2. Install Nacos Controller
+```bash
+git clone https://github.com/nacos-group/nacos-controller.git
+cd nacos-controller/charts/nacos-controller
+
+export KUBECONFIG=/path/to/your/kubeconfig/file
+kubectl create ns nacos
+helm install -n nacos nacos-controller .
+```
 
 ### Sync configuration from Kubernetes to Nacos Server
 1. a Secret contains authorization information of nacos server, which is ak and sk

@@ -257,7 +257,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 			APIVersion: apiVersion,
 		}
 	} else {
-		objectRef = *(objectRef.DeepCopy())
+		objectRef = *(dc.Spec.ObjectRef.DeepCopy())
 		objectRef.Namespace = dc.Namespace
 	}
 	dc.Status.ObjectRef = &objectRef

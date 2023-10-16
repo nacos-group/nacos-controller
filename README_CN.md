@@ -8,7 +8,16 @@
 
 ## 快速开始
 ### 部署Nacos Controller
-// TBD
+1. 安装helm，参考[文档](https://helm.sh/docs/intro/install/)
+2. 安装Nacos Controller
+```bash
+git clone https://github.com/nacos-group/nacos-controller.git
+cd nacos-controller/charts/nacos-controller
+
+export KUBECONFIG=/你的K8s集群/访问凭证/文件路径
+kubectl create ns nacos
+helm install -n nacos nacos-controller .
+```
 
 ### 从集群中同步配置到Nacos中
 1. 一份Secret配置Nacos Server访问凭证，需包含ak和sk字段

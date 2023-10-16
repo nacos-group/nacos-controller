@@ -209,6 +209,79 @@ var _ = Describe("DynamicConfigurationController", func() {
 				return true
 			}, time.Second*30, time.Second*5).Should(gomega.BeTrue())
 		})
+		It("With spec.ObjectRef", func() {
+			rand.Seed(time.Now().Unix() + 2)
+			randInt := rand.Int()
+			dataId := fmt.Sprintf("randon-data-id-%d", randInt)
+			content := fmt.Sprintf("content-%d", randInt)
+			group := fmt.Sprintf("suite-test-group-s2c-%d", randInt)
+			cm := v1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "dc-suite-test-s2c-with-obj-ref",
+					Namespace: dcTestNamespaceStr,
+				},
+			}
+			dcWithObjRef := v12.DynamicConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "dc-suite-test-s2c-with-obj-ref",
+					Namespace: dcTestNamespaceStr,
+				},
+				Spec: v12.DynamicConfigurationSpec{
+					DataIds: []string{dataId},
+					Strategy: v12.SyncStrategy{
+						SyncPolicy:    v12.Always,
+						SyncDeletion:  true,
+						SyncDirection: v12.Server2Cluster,
+					},
+					NacosServer: v12.NacosServerConfiguration{
+						Endpoint:  pointer.String(os.Getenv(nacosServerEndpoint)),
+						Namespace: os.Getenv(nacosServerNamespace),
+						Group:     group,
+						AuthRef: &v1.ObjectReference{
+							Name:       dcTestNacosCredentialName,
+							APIVersion: "v1",
+							Kind:       "Secret",
+						},
+					},
+					ObjectRef: &v1.ObjectReference{
+						Name:       cm.Name,
+						APIVersion: "v1",
+						Kind:       "ConfigMap",
+					},
+				},
+			}
+			By("create dataId and content in nacos server")
+			createOrUpdateContentInNaocs(&dcWithObjRef, dataId, content)
+			By("create a DynamicConfiguration with server2cluster sync direction")
+			ensureDynamicConfigurationExist(&dcWithObjRef)
+			ensureConfigMapExist(&cm)
+			By(fmt.Sprintf("check configmap: %s for content: %s", cm.Name, content))
+			gomega.Eventually(checkConfigMapWithDataIdAndContent).
+				WithArguments(cm.Name, dcWithObjRef.Namespace, dataId, content).
+				WithTimeout(30 * time.Second).
+				WithPolling(5 * time.Second).
+				Should(gomega.BeTrue())
+			By("delete dataId in nacos server")
+			deleteDataIdInNaocs(&dcWithObjRef, dataId)
+			By("delete DynamicConfiguration & ConfigMap")
+			gomega.Expect(k8sClient.Delete(ctx, &dcWithObjRef)).Should(gomega.Succeed())
+			gomega.Expect(k8sClient.Delete(ctx, &cm)).Should(gomega.Succeed())
+			gomega.Eventually(func() bool {
+				v := v12.DynamicConfiguration{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: dcWithObjRef.Name, Namespace: dcWithObjRef.Namespace}, &v); err == nil {
+					return false
+				} else {
+					gomega.Expect(errors.IsNotFound(err)).Should(gomega.BeTrue())
+				}
+				m := v1.ConfigMap{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, &m); err == nil {
+					return false
+				} else {
+					gomega.Expect(errors.IsNotFound(err)).Should(gomega.BeTrue())
+				}
+				return true
+			}, time.Second*30, time.Second*5).Should(gomega.BeTrue())
+		})
 	})
 })
 
@@ -347,7 +420,7 @@ func createOrUpdateContentInNaocs(dc *v12.DynamicConfiguration, dataId, content 
 }
 
 func deleteDataIdInNaocs(dc *v12.DynamicConfiguration, dataId string) {
-	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{}, dc)
+	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{Client: k8sClient}, dc)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	_, err = configClient.DeleteConfig(vo.ConfigParam{
 		Group:  dc.Spec.NacosServer.Group,
