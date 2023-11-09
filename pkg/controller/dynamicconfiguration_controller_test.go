@@ -4,6 +4,7 @@ import (
 	"fmt"
 	v12 "github.com/nacos-group/nacos-controller/api/v1"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -391,7 +392,7 @@ func checkDynamicConfigurationStatus(dc *v12.DynamicConfiguration) {
 }
 
 func getContentByDataId(dc *v12.DynamicConfiguration) (string, bool) {
-	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{Client: k8sClient}, dc)
+	configClient, err := impl.GetNacosClientBuilder().Build(&auth.DefaultNacosAuthProvider{Client: k8sClient}, dc)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	content, err := configClient.GetConfig(vo.ConfigParam{
 		Group:  dc.Spec.NacosServer.Group,
@@ -402,7 +403,7 @@ func getContentByDataId(dc *v12.DynamicConfiguration) (string, bool) {
 }
 
 func createOrUpdateContentInNaocs(dc *v12.DynamicConfiguration, dataId, content string) {
-	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{Client: k8sClient}, dc)
+	configClient, err := impl.GetNacosClientBuilder().Build(&auth.DefaultNacosAuthProvider{Client: k8sClient}, dc)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	serverContent, err := configClient.GetConfig(vo.ConfigParam{
 		Group:  dc.Spec.NacosServer.Group,
@@ -420,7 +421,7 @@ func createOrUpdateContentInNaocs(dc *v12.DynamicConfiguration, dataId, content 
 }
 
 func deleteDataIdInNaocs(dc *v12.DynamicConfiguration, dataId string) {
-	configClient, err := auth.GetNacosAuthManger().GetNacosConfigClient(&auth.DefaultNaocsAuthProvider{Client: k8sClient}, dc)
+	configClient, err := impl.GetNacosClientBuilder().Build(&auth.DefaultNacosAuthProvider{Client: k8sClient}, dc)
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	_, err = configClient.DeleteConfig(vo.ConfigParam{
 		Group:  dc.Spec.NacosServer.Group,

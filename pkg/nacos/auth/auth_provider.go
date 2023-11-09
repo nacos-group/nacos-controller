@@ -19,15 +19,31 @@ var (
 	secretGVK = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"}
 )
 
+type ConfigClientParam struct {
+	Endpoint   string
+	ServerAddr string
+	Namespace  string
+	AuthInfo   ConfigClientAuthInfo
+}
+
+type ConfigClientAuthInfo struct {
+	AccessKey string
+	SecretKey string
+}
+
 type NacosAuthProvider interface {
 	GetNacosClientParams(*nacosiov1.DynamicConfiguration) (*ConfigClientParam, error)
 }
 
-type DefaultNaocsAuthProvider struct {
+type DefaultNacosAuthProvider struct {
 	client.Client
 }
 
-func (p *DefaultNaocsAuthProvider) GetNacosClientParams(dc *nacosiov1.DynamicConfiguration) (*ConfigClientParam, error) {
+func NewDefaultNacosAuthProvider(c client.Client) NacosAuthProvider {
+	return &DefaultNacosAuthProvider{Client: c}
+}
+
+func (p *DefaultNacosAuthProvider) GetNacosClientParams(dc *nacosiov1.DynamicConfiguration) (*ConfigClientParam, error) {
 	if dc == nil {
 		return nil, fmt.Errorf("empty DynamicConfiguration")
 	}
@@ -56,7 +72,7 @@ func (p *DefaultNaocsAuthProvider) GetNacosClientParams(dc *nacosiov1.DynamicCon
 	return nil, fmt.Errorf("either endpoint or serverAddr should be set")
 }
 
-func (p *DefaultNaocsAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
+func (p *DefaultNacosAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
 	switch obj.GroupVersionKind().String() {
 	case secretGVK.String():
 		return p.getNaocsAuthFromSecret(obj)
@@ -65,7 +81,7 @@ func (p *DefaultNaocsAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*C
 	}
 }
 
-func (p *DefaultNaocsAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
+func (p *DefaultNacosAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
 	s := v1.Secret{}
 	err := p.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s)
 	if err != nil {
