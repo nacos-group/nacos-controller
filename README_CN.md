@@ -135,4 +135,7 @@ data:
       name: nacos-auth
 ```
 
+## 贡献者
+特别感谢以下人员/团队对本项目的贡献
 
+- 阿里云[EDAS](https://www.aliyun.com/product/edas)团队（项目孵化来源）
