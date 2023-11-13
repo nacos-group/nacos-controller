@@ -4,8 +4,7 @@ import (
 	"context"
 	"fmt"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/config"
+	nacosclient "github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -18,28 +17,20 @@ type SyncConfigurationController struct {
 	client.Client
 	mappings                 *DataId2DCMappings
 	locks                    *LockManager
-	configClient             config.NacosConfigClient
+	configClient             nacosclient.NacosConfigClient
 	server2ClusterCallbackFn func(namespace, group, dataId, content string)
 }
 
 type SyncConfigOptions struct {
-	AuthManger   *auth.NacosAuthManager
-	AuthProvider auth.NacosAuthProvider
-	ConfigClient config.NacosConfigClient
+	ConfigClient nacosclient.NacosConfigClient
 	Callback     Server2ClusterCallback
 	Mappings     *DataId2DCMappings
 	Locks        *LockManager
 }
 
 func NewSyncConfigurationController(c client.Client, opt SyncConfigOptions) *SyncConfigurationController {
-	if opt.AuthProvider == nil {
-		opt.AuthProvider = &auth.DefaultNaocsAuthProvider{Client: c}
-	}
-	if opt.AuthManger == nil {
-		opt.AuthManger = auth.GetNacosAuthManger()
-	}
 	if opt.ConfigClient == nil {
-		opt.ConfigClient = config.NewDefaultNacosConfigClient(opt.AuthProvider, opt.AuthManger)
+		opt.ConfigClient = nacosclient.GetDefaultNacosClient()
 	}
 	if opt.Mappings == nil {
 		opt.Mappings = NewDataId2DCMappings()
@@ -107,7 +98,7 @@ func (scc *SyncConfigurationController) finalizeCluster2Server(ctx context.Conte
 	group := dc.Spec.NacosServer.Group
 	var errDataIdList []string
 	for _, dataId := range dc.Spec.DataIds {
-		_, err := scc.configClient.DeleteConfig(config.NacosConfigParam{
+		_, err := scc.configClient.DeleteConfig(nacosclient.NacosConfigParam{
 			DynamicConfiguration: dc,
 			Group:                group,
 			DataId:               dataId,
@@ -163,7 +154,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 		if !exist {
 			// If dataId is not exist in cluster, and syncDeletion is true. Then we delete dataId in nacos server.
 			if dc.Spec.Strategy.SyncDeletion {
-				_, err := scc.configClient.DeleteConfig(config.NacosConfigParam{
+				_, err := scc.configClient.DeleteConfig(nacosclient.NacosConfigParam{
 					DynamicConfiguration: dc,
 					Group:                group,
 					DataId:               dataId,
@@ -181,7 +172,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 		}
 		// If syncPolicy is IfAbsent, then we check the dataId in nacos server first
 		if dc.Spec.Strategy.SyncPolicy == nacosiov1.IfAbsent {
-			conf, err := scc.configClient.GetConfig(config.NacosConfigParam{
+			conf, err := scc.configClient.GetConfig(nacosclient.NacosConfigParam{
 				DynamicConfiguration: dc,
 				Group:                group,
 				DataId:               dataId,
@@ -202,7 +193,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 				continue
 			}
 		}
-		_, err = scc.configClient.PublishConfig(config.NacosConfigParam{
+		_, err = scc.configClient.PublishConfig(nacosclient.NacosConfigParam{
 			DynamicConfiguration: dc,
 			DataId:               dataId,
 			Group:                group,
@@ -268,7 +259,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 	syncIfAbsent := dc.Spec.Strategy.SyncPolicy == nacosiov1.IfAbsent
 	for _, dataId := range dc.Spec.DataIds {
 		logWithId := l.WithValues("dataId", dataId)
-		content, err := scc.configClient.GetConfig(config.NacosConfigParam{
+		content, err := scc.configClient.GetConfig(nacosclient.NacosConfigParam{
 			DynamicConfiguration: dc,
 			Group:                group,
 			DataId:               dataId,
@@ -311,7 +302,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 			continue
 		}
 		if !scc.mappings.HasMapping(namespace, group, dataId, nn) {
-			err = scc.configClient.ListenConfig(config.NacosConfigParam{
+			err = scc.configClient.ListenConfig(nacosclient.NacosConfigParam{
 				DynamicConfiguration: dc,
 				Group:                group,
 				DataId:               dataId,
@@ -343,7 +334,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 		dcNNList := scc.mappings.GetDCList(namespace, group, dataId)
 		if len(dcNNList) == 0 {
 			l.Info("no DynamicConfiguration listen to this dataId, stop listening from nacos server", "dataId", dataId)
-			if err := scc.configClient.CancelListenConfig(config.NacosConfigParam{
+			if err := scc.configClient.CancelListenConfig(nacosclient.NacosConfigParam{
 				DynamicConfiguration: dc,
 				Group:                group,
 				DataId:               dataId,
