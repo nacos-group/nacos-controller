@@ -21,6 +21,7 @@ import (
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
+	"k8s.io/client-go/kubernetes"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -94,7 +95,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = controller.NewDynamicConfigurationReconciler(mgr.GetClient(), mgr.GetScheme(), nacos.SyncConfigOptions{
+	clientSet := kubernetes.NewForConfigOrDie(ctrl.GetConfigOrDie())
+
+	if err = controller.NewDynamicConfigurationReconciler(mgr.GetClient(), clientSet, nacos.SyncConfigOptions{
 		ConfigClient: impl.NewDefaultNacosConfigClient(auth.NewDefaultNacosAuthProvider(mgr.GetClient())),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DynamicConfiguration")

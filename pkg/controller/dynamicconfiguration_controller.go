@@ -24,11 +24,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	runtimehandler "sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -48,15 +48,13 @@ const (
 // DynamicConfigurationReconciler reconciles a DynamicConfiguration object
 type DynamicConfigurationReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
 	controller *nacos.SyncConfigurationController
 }
 
-func NewDynamicConfigurationReconciler(c client.Client, s *runtime.Scheme, opt nacos.SyncConfigOptions) *DynamicConfigurationReconciler {
+func NewDynamicConfigurationReconciler(c client.Client, cs *kubernetes.Clientset, opt nacos.SyncConfigOptions) *DynamicConfigurationReconciler {
 	return &DynamicConfigurationReconciler{
 		Client:     c,
-		Scheme:     s,
-		controller: nacos.NewSyncConfigurationController(c, opt),
+		controller: nacos.NewSyncConfigurationController(c, cs, opt),
 	}
 }
 
