@@ -6,8 +6,9 @@ import (
 	"github.com/nacos-group/nacos-controller/pkg"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
@@ -15,9 +16,9 @@ import (
 
 func init() {
 	// Using ConfigMapWrapper as default ConfigMap resource wrapper
-	RegisterObjectWrapperIfAbsent(ConfigMapGVK.String(), func(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
+	RegisterObjectWrapperIfAbsent(ConfigMapGVK.String(), func(cs *kubernetes.Clientset, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
 		return &ConfigMapWrapper{
-			Client:    c,
+			cs:        cs,
 			ObjectRef: objRef,
 			owner:     owner,
 		}, nil
@@ -41,7 +42,7 @@ type ObjectReferenceWrapper interface {
 	Reload() error
 }
 
-type NewObjectWrapperFn func(client.Client, client.Object, *v1.ObjectReference) (ObjectReferenceWrapper, error)
+type NewObjectWrapperFn func(*kubernetes.Clientset, client.Object, *v1.ObjectReference) (ObjectReferenceWrapper, error)
 
 var objectWrapperMap = map[string]NewObjectWrapperFn{}
 
@@ -57,20 +58,20 @@ func RegisterObjectWrapper(targetGVK string, fn NewObjectWrapperFn) {
 	objectWrapperMap[targetGVK] = fn
 }
 
-func NewObjectReferenceWrapper(c client.Client, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
+func NewObjectReferenceWrapper(cs *kubernetes.Clientset, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
 	targetGVK := objRef.GroupVersionKind().String()
 	fn, exist := objectWrapperMap[targetGVK]
 	if !exist {
 		return nil, fmt.Errorf("unsupport object reference type: %s", targetGVK)
 	}
-	return fn(c, owner, objRef)
+	return fn(cs, owner, objRef)
 }
 
 type ConfigMapWrapper struct {
 	ObjectRef *v1.ObjectReference
 	cm        *v1.ConfigMap
 	owner     client.Object
-	client.Client
+	cs        *kubernetes.Clientset
 }
 
 func (cmw *ConfigMapWrapper) GetContent(dataId string) (string, bool, error) {
@@ -149,7 +150,13 @@ func (cmw *ConfigMapWrapper) Flush() error {
 	if cmw.cm == nil {
 		return nil
 	}
-	return cmw.Update(context.TODO(), cmw.cm)
+	var err error
+	var cm *v1.ConfigMap
+	if cm, err = cmw.cs.CoreV1().ConfigMaps(cmw.cm.Namespace).Update(context.TODO(), cmw.cm, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	cmw.cm = cm
+	return nil
 }
 
 func (cmw *ConfigMapWrapper) InjectLabels(labels map[string]string) {
@@ -170,33 +177,35 @@ func (cmw *ConfigMapWrapper) InjectLabels(labels map[string]string) {
 }
 
 func (cmw *ConfigMapWrapper) Reload() error {
-	cm := v1.ConfigMap{}
-	if err := cmw.Get(context.TODO(), types.NamespacedName{Namespace: cmw.ObjectRef.Namespace, Name: cmw.ObjectRef.Name}, &cm); err != nil {
-		if errors.IsNotFound(err) {
-			// if not found, try to create object reference
-			cm.Namespace = cmw.ObjectRef.Namespace
-			cm.Name = cmw.ObjectRef.Name
+	var cm *v1.ConfigMap
+	var err error
 
-			owner := cmw.owner
-			apiVersion, kind := owner.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
-			cm.SetOwnerReferences([]v12.OwnerReference{
-				{
-					APIVersion:         apiVersion,
-					Kind:               kind,
-					Name:               owner.GetName(),
-					UID:                owner.GetUID(),
-					Controller:         pointer.Bool(true),
-					BlockOwnerDeletion: pointer.Bool(true),
-				},
-			})
-			if err := cmw.Create(context.TODO(), &cm); err != nil {
-				return err
-			}
-		} else {
+	if cm, err = cmw.cs.CoreV1().ConfigMaps(cmw.ObjectRef.Namespace).Get(context.TODO(), cmw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		// if not found, try to create object reference
+		cm = &v1.ConfigMap{}
+		cm.Namespace = cmw.ObjectRef.Namespace
+		cm.Name = cmw.ObjectRef.Name
+
+		owner := cmw.owner
+		apiVersion, kind := owner.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
+		cm.SetOwnerReferences([]v12.OwnerReference{
+			{
+				APIVersion:         apiVersion,
+				Kind:               kind,
+				Name:               owner.GetName(),
+				UID:                owner.GetUID(),
+				Controller:         pointer.Bool(true),
+				BlockOwnerDeletion: pointer.Bool(true),
+			},
+		})
+		if cm, err = cmw.cs.CoreV1().ConfigMaps(cm.Namespace).Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
-	cmw.cm = &cm
+	cmw.cm = cm
 	return cmw.ensureOwnerLabel()
 }
 

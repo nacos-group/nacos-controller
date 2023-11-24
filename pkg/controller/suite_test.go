@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	"os"
 	"path/filepath"
@@ -82,7 +85,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), k8sManager.GetScheme(), nacos.SyncConfigOptions{}).SetupWithManager(k8sManager)
+	clientSet := kubernetes.NewForConfigOrDie(ctrl.GetConfigOrDie())
+
+	err = NewDynamicConfigurationReconciler(k8sManager.GetClient(), clientSet, nacos.SyncConfigOptions{
+		ConfigClient: impl.NewDefaultNacosConfigClient(auth.NewDefaultNacosAuthProvider(k8sManager.GetClient())),
+	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

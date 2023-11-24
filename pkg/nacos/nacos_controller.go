@@ -8,13 +8,14 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 )
 
 type SyncConfigurationController struct {
-	client.Client
+	cs                       *kubernetes.Clientset
 	mappings                 *DataId2DCMappings
 	locks                    *LockManager
 	configClient             nacosclient.NacosConfigClient
@@ -28,7 +29,7 @@ type SyncConfigOptions struct {
 	Locks        *LockManager
 }
 
-func NewSyncConfigurationController(c client.Client, opt SyncConfigOptions) *SyncConfigurationController {
+func NewSyncConfigurationController(c client.Client, cs *kubernetes.Clientset, opt SyncConfigOptions) *SyncConfigurationController {
 	if opt.ConfigClient == nil {
 		opt.ConfigClient = nacosclient.GetDefaultNacosClient()
 	}
@@ -39,10 +40,10 @@ func NewSyncConfigurationController(c client.Client, opt SyncConfigOptions) *Syn
 		opt.Locks = NewLockManager()
 	}
 	if opt.Callback == nil {
-		opt.Callback = NewDefaultServer2ClusterCallback(c, opt.Mappings, opt.Locks)
+		opt.Callback = NewDefaultServer2ClusterCallback(c, cs, opt.Mappings, opt.Locks)
 	}
 	return &SyncConfigurationController{
-		Client:                   c,
+		cs:                       cs,
 		mappings:                 opt.Mappings,
 		locks:                    opt.Locks,
 		configClient:             opt.ConfigClient,
@@ -125,7 +126,7 @@ func (scc *SyncConfigurationController) syncCluster2Server(ctx context.Context, 
 		APIVersion: dc.Spec.ObjectRef.APIVersion,
 		Kind:       dc.Spec.ObjectRef.Kind,
 	}
-	objWrapper, err := NewObjectReferenceWrapper(scc.Client, dc, &objRef)
+	objWrapper, err := NewObjectReferenceWrapper(scc.cs, dc, &objRef)
 	if err != nil {
 		l.Error(err, "create object wrapper error", "obj", objRef)
 		return err
@@ -243,7 +244,7 @@ func (scc *SyncConfigurationController) syncServer2Cluster(ctx context.Context, 
 	}
 	dc.Status.ObjectRef = &objectRef
 
-	objWrapper, err := NewObjectReferenceWrapper(scc.Client, dc, &objectRef)
+	objWrapper, err := NewObjectReferenceWrapper(scc.cs, dc, &objectRef)
 	if err != nil {
 		l.Error(err, "create object wrapper error")
 		return err

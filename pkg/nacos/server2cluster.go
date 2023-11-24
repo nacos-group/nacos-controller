@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,9 +21,10 @@ type Server2ClusterCallback interface {
 	CallbackWithContext(ctx context.Context, namespace, group, dataId, content string)
 }
 
-func NewDefaultServer2ClusterCallback(c client.Client, mappings *DataId2DCMappings, locks *LockManager) Server2ClusterCallback {
+func NewDefaultServer2ClusterCallback(c client.Client, cs *kubernetes.Clientset, mappings *DataId2DCMappings, locks *LockManager) Server2ClusterCallback {
 	return &DefaultServer2ClusterCallback{
 		Client:   c,
+		cs:       cs,
 		mappings: mappings,
 		locks:    locks,
 	}
@@ -30,6 +32,7 @@ func NewDefaultServer2ClusterCallback(c client.Client, mappings *DataId2DCMappin
 
 type DefaultServer2ClusterCallback struct {
 	client.Client
+	cs       *kubernetes.Clientset
 	mappings *DataId2DCMappings
 	locks    *LockManager
 }
@@ -99,7 +102,7 @@ func (cb *DefaultServer2ClusterCallback) server2ClusterCallbackOneDC(ctx context
 
 	objRef := dc.Status.ObjectRef.DeepCopy()
 	objRef.Namespace = dc.Namespace
-	objWrapper, err := NewObjectReferenceWrapper(cb.Client, &dc, objRef)
+	objWrapper, err := NewObjectReferenceWrapper(cb.cs, &dc, objRef)
 	if err != nil {
 		l.Error(err, "create object wrapper error", "objRef", objRef)
 		return err
