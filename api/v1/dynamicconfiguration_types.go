@@ -28,23 +28,23 @@ import (
 type DynamicConfigurationSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	DataIds        []string                 `json:"dataIds,omitempty"`
 	AdditionalConf *AdditionalConfiguration `json:"additionalConf,omitempty"`
 	Strategy       SyncStrategy             `json:"strategy,omitempty"`
 	NacosServer    NacosServerConfiguration `json:"nacosServer,omitempty"`
-	ObjectRef      *v1.ObjectReference      `json:"objectRef,omitempty"`
+	ObjectRefs     []*v1.ObjectReference    `json:"objectRefs,omitempty"`
 }
 
 // DynamicConfigurationStatus defines the observed state of DynamicConfiguration
 type DynamicConfigurationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Phase              string              `json:"phase,omitempty"`
-	Message            string              `json:"message,omitempty"`
-	ObservedGeneration int64               `json:"observedGeneration,omitempty"`
-	SyncStatuses       []SyncStatus        `json:"syncStatuses,omitempty"`
-	ObjectRef          *v1.ObjectReference `json:"objectRef,omitempty"`
+	Phase              string                  `json:"phase,omitempty"`
+	Message            string                  `json:"message,omitempty"`
+	ObservedGeneration int64                   `json:"observedGeneration,omitempty"`
+	SyncStatuses       map[string][]SyncStatus `json:"syncStatuses,omitempty"`
+	ListenConfigs      map[string][]string     `json:"listenConfigs,omitempty"`
+	NacosServerStatus  NacosServerStatus       `json:"nacosServerStatus,omitempty"`
+	SyncStrategyStatus SyncStrategy            `json:"syncStrategyStatus,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -69,31 +69,37 @@ type AdditionalConfiguration struct {
 }
 
 type SyncStrategy struct {
-	SyncPolicy    DynamicConfigurationSyncPolicy    `json:"syncPolicy,omitempty"`
-	SyncDeletion  bool                              `json:"syncDeletion,omitempty"`
-	SyncDirection DynamicConfigurationSyncDirection `json:"syncDirection,omitempty"`
+	SyncScope DynamicConfigurationSyncScope `json:"scope,omitempty"`
+	//+kubebuilder:default=false
+	SyncDeletion   bool                                   `json:"syncDeletion,omitempty"`
+	ConflictPolicy DynamicConfigurationSyncConflictPolicy `json:"conflictPolicy,omitempty"`
 }
 
-type DynamicConfigurationSyncPolicy string
+type DynamicConfigurationSyncConflictPolicy string
 
 const (
-	Always   DynamicConfigurationSyncPolicy = "Always"
-	IfAbsent DynamicConfigurationSyncPolicy = "IfAbsent"
+	PreferCluster DynamicConfigurationSyncConflictPolicy = "preferCluster"
+	PreferServer  DynamicConfigurationSyncConflictPolicy = "preferServer"
 )
 
-type DynamicConfigurationSyncDirection string
+type DynamicConfigurationSyncScope string
 
 const (
-	Cluster2Server DynamicConfigurationSyncDirection = "cluster2server"
-	Server2Cluster DynamicConfigurationSyncDirection = "server2cluster"
+	SyncScopePartial DynamicConfigurationSyncScope = "partial"
+	SyncScopeFull    DynamicConfigurationSyncScope = "full"
 )
 
 type NacosServerConfiguration struct {
-	Endpoint   *string             `json:"endpoint,omitempty"`
-	ServerAddr *string             `json:"serverAddr,omitempty"`
+	Endpoint   string              `json:"endpoint,omitempty"`
+	ServerAddr string              `json:"serverAddr,omitempty"`
 	Namespace  string              `json:"namespace,omitempty"`
-	Group      string              `json:"group,omitempty"`
 	AuthRef    *v1.ObjectReference `json:"authRef,omitempty"`
+}
+
+type NacosServerStatus struct {
+	Endpoint   string `json:"endpoint,omitempty"`
+	ServerAddr string `json:"serverAddr,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
 }
 
 type SyncStatus struct {

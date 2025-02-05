@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
-	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	client2 "github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -32,7 +32,7 @@ type ConfigClientAuthInfo struct {
 }
 
 type NacosAuthProvider interface {
-	GetNacosClientParams(*nacosiov1.DynamicConfiguration) (*ConfigClientParam, error)
+	GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error)
 }
 
 type DefaultNacosAuthProvider struct {
@@ -43,29 +43,25 @@ func NewDefaultNacosAuthProvider(c client.Client) NacosAuthProvider {
 	return &DefaultNacosAuthProvider{Client: c}
 }
 
-func (p *DefaultNacosAuthProvider) GetNacosClientParams(dc *nacosiov1.DynamicConfiguration) (*ConfigClientParam, error) {
-	if dc == nil {
-		return nil, fmt.Errorf("empty DynamicConfiguration")
-	}
-	serverConf := &dc.Spec.NacosServer
-	authRef := serverConf.AuthRef.DeepCopy()
-	authRef.Namespace = dc.Namespace
+func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error) {
+	authRef = authRef.DeepCopy()
+	authRef.Namespace = key.Namespace
 
 	authInfo, err := p.getNacosAuthInfo(authRef)
 	if err != nil {
 		return nil, err
 	}
-	if serverConf.Endpoint != nil {
+	if len(nacosServerParam.Endpoint) > 0 {
 		return &ConfigClientParam{
-			Endpoint:  *serverConf.Endpoint,
-			Namespace: serverConf.Namespace,
+			Endpoint:  nacosServerParam.Endpoint,
+			Namespace: nacosServerParam.Namespace,
 			AuthInfo:  *authInfo,
 		}, nil
 	}
-	if serverConf.ServerAddr != nil {
+	if len(nacosServerParam.ServerAddr) > 0 {
 		return &ConfigClientParam{
-			ServerAddr: *serverConf.ServerAddr,
-			Namespace:  serverConf.Namespace,
+			ServerAddr: nacosServerParam.ServerAddr,
+			Namespace:  nacosServerParam.Namespace,
 			AuthInfo:   *authInfo,
 		}, nil
 	}

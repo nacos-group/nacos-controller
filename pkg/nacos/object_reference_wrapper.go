@@ -7,10 +7,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"strings"
 )
 
@@ -18,6 +17,14 @@ func init() {
 	// Using ConfigMapWrapper as default ConfigMap resource wrapper
 	RegisterObjectWrapperIfAbsent(ConfigMapGVK.String(), func(cs *kubernetes.Clientset, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
 		return &ConfigMapWrapper{
+			cs:        cs,
+			ObjectRef: objRef,
+			owner:     owner,
+		}, nil
+	})
+
+	RegisterObjectWrapperIfAbsent(SecretGVK.String(), func(cs *kubernetes.Clientset, owner client.Object, objRef *v1.ObjectReference) (ObjectReferenceWrapper, error) {
+		return &SecretWrapper{
 			cs:        cs,
 			ObjectRef: objRef,
 			owner:     owner,
@@ -40,6 +47,8 @@ type ObjectReferenceWrapper interface {
 	Flush() error
 	//Reload load ObjectReference, create it when not found
 	Reload() error
+
+	GetAllKeys() ([]string, error)
 }
 
 type NewObjectWrapperFn func(*kubernetes.Clientset, client.Object, *v1.ObjectReference) (ObjectReferenceWrapper, error)
@@ -89,6 +98,24 @@ func (cmw *ConfigMapWrapper) GetContent(dataId string) (string, bool, error) {
 		return string(v), true, nil
 	}
 	return "", false, nil
+}
+
+func (cmw *ConfigMapWrapper) GetAllKeys() ([]string, error) {
+	if cmw.cm == nil {
+		if err := cmw.Reload(); err != nil {
+			return nil, err
+		}
+	}
+	data := cmw.cm.Data
+	binaryData := cmw.cm.BinaryData
+	var keys []string
+	for key := range data {
+		keys = append(keys, key)
+	}
+	for key := range binaryData {
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 func (cmw *ConfigMapWrapper) StoreContent(dataId string, content string) error {
@@ -188,37 +215,137 @@ func (cmw *ConfigMapWrapper) Reload() error {
 		cm = &v1.ConfigMap{}
 		cm.Namespace = cmw.ObjectRef.Namespace
 		cm.Name = cmw.ObjectRef.Name
-
-		owner := cmw.owner
-		apiVersion, kind := owner.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
-		cm.SetOwnerReferences([]v12.OwnerReference{
-			{
-				APIVersion:         apiVersion,
-				Kind:               kind,
-				Name:               owner.GetName(),
-				UID:                owner.GetUID(),
-				Controller:         pointer.Bool(true),
-				BlockOwnerDeletion: pointer.Bool(true),
-			},
-		})
 		if cm, err = cmw.cs.CoreV1().ConfigMaps(cm.Namespace).Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
+	if !controllerutil.ContainsFinalizer(cm, pkg.FinalizerName) {
+		controllerutil.AddFinalizer(cm, pkg.FinalizerName)
+		if cm, err = cmw.cs.CoreV1().ConfigMaps(cm.Namespace).Update(context.TODO(), cm, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
 	cmw.cm = cm
-	return cmw.ensureOwnerLabel()
+	return nil
 }
 
-func (cmw *ConfigMapWrapper) ensureOwnerLabel() error {
-	if cmw.cm == nil {
+type SecretWrapper struct {
+	ObjectRef *v1.ObjectReference
+	secret    *v1.Secret
+	owner     client.Object
+	cs        *kubernetes.Clientset
+}
+
+func (sw *SecretWrapper) GetContent(dataId string) (string, bool, error) {
+	if sw.secret == nil {
+		if err := sw.Reload(); err != nil {
+			return "", false, err
+		}
+	}
+	content, ifExist := GetSecretContent(sw.secret, dataId)
+	return content, ifExist, nil
+}
+
+func (sw *SecretWrapper) GetAllKeys() ([]string, error) {
+	if sw.secret == nil {
+		if err := sw.Reload(); err != nil {
+			return nil, err
+		}
+	}
+	return GetSecretAllKeys(sw.secret), nil
+}
+
+func (sw *SecretWrapper) StoreContent(dataId string, content string) error {
+	if sw.secret == nil {
+		if err := sw.Reload(); err != nil {
+			return err
+		}
+	}
+	StoreSecretContent(sw.secret, dataId, content)
+	return nil
+}
+
+func (sw *SecretWrapper) DeleteContent(dataId string) error {
+	if sw.secret == nil {
+		if err := sw.Reload(); err != nil {
+			return err
+		}
+	}
+	if _, ok := sw.secret.Data[dataId]; ok {
+		delete(sw.secret.Data, dataId)
 		return nil
 	}
-	if cmw.cm.Labels == nil {
-		cmw.cm.Labels = map[string]string{}
+	return nil
+}
+
+func (sw *SecretWrapper) StoreAllContent(dataMap map[string]string) (bool, error) {
+	changed := false
+	for dataId, newContent := range dataMap {
+		if !changed {
+			if oldContent, exist, err := sw.GetContent(dataId); err != nil {
+				return false, err
+			} else if !exist || CalcMd5(newContent) != CalcMd5(oldContent) {
+				changed = true
+			}
+		}
+		if err := sw.StoreContent(dataId, newContent); err != nil {
+			return false, err
+		}
 	}
-	if v, ok := cmw.cm.Labels[pkg.ConfigMapLabel]; !ok || v != cmw.owner.GetName() {
-		cmw.cm.Labels[pkg.ConfigMapLabel] = cmw.owner.GetName()
-		return cmw.Flush()
+	return changed, nil
+}
+
+func (sw *SecretWrapper) Flush() error {
+	if sw.secret == nil {
+		return nil
 	}
+	var err error
+	var secret *v1.Secret
+	if secret, err = sw.cs.CoreV1().Secrets(sw.secret.Namespace).Update(context.TODO(), sw.secret, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	sw.secret = secret
+	return nil
+}
+
+func (sw *SecretWrapper) InjectLabels(labels map[string]string) {
+	if sw.secret == nil {
+		if err := sw.Reload(); err != nil {
+			return
+		}
+	}
+	if len(labels) == 0 {
+		return
+	}
+	if sw.secret.Labels == nil {
+		sw.secret.Labels = map[string]string{}
+	}
+	for k, v := range labels {
+		sw.secret.Labels[k] = v
+	}
+}
+
+func (sw *SecretWrapper) Reload() error {
+	var secret *v1.Secret
+	var err error
+
+	if secret, err = sw.cs.CoreV1().Secrets(sw.ObjectRef.Namespace).Get(context.TODO(), sw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		secret = &v1.Secret{}
+		secret.Namespace = sw.ObjectRef.Namespace
+		secret.Name = sw.ObjectRef.Name
+		if secret, err = sw.cs.CoreV1().Secrets(secret.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+	}
+	if !controllerutil.ContainsFinalizer(secret, pkg.FinalizerName) {
+		controllerutil.AddFinalizer(secret, pkg.FinalizerName)
+		if secret, err = sw.cs.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+	sw.secret = secret
 	return nil
 }

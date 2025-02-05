@@ -18,11 +18,12 @@ package main
 
 import (
 	"flag"
+	"os"
+
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
 	"k8s.io/client-go/kubernetes"
-	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -97,8 +98,12 @@ func main() {
 
 	clientSet := kubernetes.NewForConfigOrDie(ctrl.GetConfigOrDie())
 
+	nacosConfigClient := impl.NewDefaultNacosConfigClient(auth.NewDefaultNacosAuthProvider(mgr.GetClient()))
+	locks := nacos.NewLockManager()
+
 	if err = controller.NewDynamicConfigurationReconciler(mgr.GetClient(), clientSet, nacos.SyncConfigOptions{
-		ConfigClient: impl.NewDefaultNacosConfigClient(auth.NewDefaultNacosAuthProvider(mgr.GetClient())),
+		ConfigClient: nacosConfigClient,
+		Locks:        locks,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DynamicConfiguration")
 		os.Exit(1)
@@ -109,6 +114,22 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DynamicConfiguration")
 			os.Exit(1)
 		}
+	}
+
+	if err = controller.NewConfigMapReconciler(mgr.GetClient(), clientSet, nacos.SyncConfigOptions{
+		ConfigClient: nacosConfigClient,
+		Locks:        locks,
+	}, mgr.GetScheme()).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ConfigMap")
+		os.Exit(1)
+	}
+	if err = controller.NewSecretReconciler(mgr.GetClient(), clientSet, nacos.SyncConfigOptions{
+		ConfigClient: nacosConfigClient,
+		Locks:        locks,
+	}, mgr.GetScheme()).
+		SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Secret")
+		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
