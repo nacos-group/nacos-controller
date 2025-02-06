@@ -45,7 +45,7 @@ func (cb *DefaultServer2ClusterCallback) Callback(namespace, group, dataId, cont
 
 func (cb *DefaultServer2ClusterCallback) CallbackWithContext(ctx context.Context, namespace, group, dataId, content string) {
 	l := log.FromContext(ctx, "dynamicConfiguration", cb.dcKey.String(), "namespace", namespace, "group", group, "dataId", dataId, "type", "listenCallBack")
-	l.Info("server2cluster callback for" + cb.dcKey.String())
+	l.Info("server2cluster callback for " + cb.dcKey.String())
 	if err := retry.RetryOnConflict(wait.Backoff{
 		Duration: 1 * time.Second,
 		Factor:   2,
@@ -102,11 +102,15 @@ func (cb *DefaultServer2ClusterCallback) syncConfigToLocal(ctx context.Context, 
 	}
 	l.Info("update content success", "newContent", content, "oldContent", oldContent)
 	UpdateSyncStatus(&dc, group, dataId, newMd5, "server", metav1.Now(), true, "")
+	if err := cb.Client.Status().Update(ctx, &dc); err != nil {
+		l.Error(err, "update status error")
+		return err
+	}
 	if err := objWrapper.Flush(); err != nil {
 		l.Error(err, "flush object reference error")
 		return err
 	}
-	return cb.Client.Status().Update(ctx, &dc)
+	return nil
 }
 
 type LockManager struct {
