@@ -359,10 +359,7 @@ func (scc *DynamicConfigurationUpdateController) configGroupSync(log *logr.Logge
 			DataId: dataId,
 		})
 		if err != nil {
-			logWithDataId.Error(err, "get Config from nacos server error")
-			*errConfigList = append(*errConfigList, group+"#"+dataId)
-			UpdateSyncStatus(dc, group, dataId, "", "server", metav1.Now(), false, "get Config from nacos server error: "+err.Error())
-			continue
+			logWithDataId.Info("get Config from nacos server fail, maybe configEmpty")
 		} else {
 			logWithDataId.Info("get Config from nacos server success")
 		}

@@ -49,7 +49,7 @@ func NewDefaultNacosAuthProvider(c client.Client) NacosAuthProvider {
 }
 
 func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error) {
-	var authInfo *ConfigClientAuthInfo = &ConfigClientAuthInfo{}
+	var authInfo = &ConfigClientAuthInfo{}
 	if authRef != nil {
 		authRef = authRef.DeepCopy()
 		authRef.Namespace = key.Namespace
