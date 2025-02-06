@@ -49,12 +49,15 @@ func NewDefaultNacosAuthProvider(c client.Client) NacosAuthProvider {
 }
 
 func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error) {
-	authRef = authRef.DeepCopy()
-	authRef.Namespace = key.Namespace
-
-	authInfo, err := p.getNacosAuthInfo(authRef)
-	if err != nil {
-		return nil, err
+	var authInfo *ConfigClientAuthInfo = &ConfigClientAuthInfo{}
+	if authRef != nil {
+		authRef = authRef.DeepCopy()
+		authRef.Namespace = key.Namespace
+		var err error
+		authInfo, err = p.getNacosAuthInfo(authRef)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(nacosServerParam.Endpoint) > 0 {
 		return &ConfigClientParam{
