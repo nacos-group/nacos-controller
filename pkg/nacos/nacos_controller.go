@@ -382,7 +382,7 @@ func (scc *DynamicConfigurationUpdateController) configGroupSync(log *logr.Logge
 		} else if (!serverExist && localExist) || (serverExist && localExist && isPreferCluster) {
 			localMd5 := CalcMd5(localContent)
 			logWithDataId.Info("Config not exist in nacos server or preferCluster, try to sync Config to nacos server")
-			if _, err := scc.configClient.PublishConfig(nacosclient.NacosConfigParam{
+			if success, err := scc.configClient.PublishConfig(nacosclient.NacosConfigParam{
 				AuthRef: dc.Spec.NacosServer.AuthRef,
 				Key: types.NamespacedName{
 					Namespace: dc.Namespace,
@@ -396,7 +396,7 @@ func (scc *DynamicConfigurationUpdateController) configGroupSync(log *logr.Logge
 				Group:   group,
 				DataId:  dataId,
 				Content: localContent,
-			}); err != nil {
+			}); err != nil || !success {
 				logWithDataId.Error(err, "publish Config to nacos server error")
 				*errConfigList = append(*errConfigList, group+"#"+dataId)
 				UpdateSyncStatus(dc, group, dataId, "", "server", metav1.Now(), false, "publish Config to nacos server error: "+err.Error())

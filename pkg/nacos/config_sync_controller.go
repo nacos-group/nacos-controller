@@ -62,7 +62,7 @@ func (r *ConfigurationSyncController) Finalize(ctx context.Context, object clien
 		_, _, bothIds := CompareDataIds(listenDataIds, localDataIds)
 		for _, dataId := range bothIds {
 			if dc.Spec.Strategy.SyncDeletion {
-				if _, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
+				if success, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
 					AuthRef: dc.Spec.NacosServer.AuthRef,
 					NacosServerParam: nacosclient.NacosServerParam{
 						Endpoint:   dc.Spec.NacosServer.Endpoint,
@@ -75,7 +75,7 @@ func (r *ConfigurationSyncController) Finalize(ctx context.Context, object clien
 					},
 					DataId: dataId,
 					Group:  nacosGroup,
-				}); err != nil {
+				}); err != nil || !success {
 					UpdateSyncStatus(&dc, nacosGroup, dataId, "", "cluster", metav1.Now(), false, fmt.Sprintf("delete config error: %s", err))
 					errConfigList = append(errConfigList, nacosGroup+"#"+dataId)
 					logWithGroup.Error(err, "delete nacos server config error", "dataId", dataId, "group", nacosGroup)
@@ -138,7 +138,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 		listenOnly, localOnly, bothIds := CompareDataIds(listenDataIds, localDataIds)
 		for _, dataId := range listenOnly {
 			if dc.Spec.Strategy.SyncDeletion {
-				if _, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
+				if success, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
 					AuthRef: dc.Spec.NacosServer.AuthRef,
 					NacosServerParam: nacosclient.NacosServerParam{
 						Endpoint:   dc.Spec.NacosServer.Endpoint,
@@ -151,7 +151,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 					},
 					DataId: dataId,
 					Group:  nacosGroup,
-				}); err != nil {
+				}); err != nil || !success {
 					UpdateSyncStatus(&dc, nacosGroup, dataId, "", "cluster", metav1.Now(), false, fmt.Sprintf("delete config error: %s", err))
 					errConfigList = append(errConfigList, nacosGroup+"#"+dataId)
 					logWithGroup.Error(err, "delete nacos server config error", "dataId", dataId, "group", nacosGroup)
@@ -178,7 +178,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 			newMd5 := CalcMd5(localContent)
 			if !localExist || len(localContent) == 0 {
 				if oldMd5 != newMd5 && dc.Spec.Strategy.SyncDeletion {
-					if _, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
+					if success, err := r.configClient.DeleteConfig(nacosclient.NacosConfigParam{
 						AuthRef: dc.Spec.NacosServer.AuthRef,
 						NacosServerParam: nacosclient.NacosServerParam{
 							Endpoint:   dc.Spec.NacosServer.Endpoint,
@@ -191,7 +191,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 						},
 						DataId: dataId,
 						Group:  nacosGroup,
-					}); err != nil {
+					}); err != nil || !success {
 						UpdateSyncStatus(&dc, nacosGroup, dataId, "", "cluster", metav1.Now(), false, fmt.Sprintf("delete config error: %s", err))
 						errConfigList = append(errConfigList, nacosGroup+"#"+dataId)
 						logWithGroup.Error(err, "delete nacos server config error", "dataId", dataId, "group", nacosGroup)
@@ -201,7 +201,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 					}
 				}
 			} else if oldMd5 != newMd5 {
-				if _, err := r.configClient.PublishConfig(nacosclient.NacosConfigParam{
+				if success, err := r.configClient.PublishConfig(nacosclient.NacosConfigParam{
 					AuthRef: dc.Spec.NacosServer.AuthRef,
 					NacosServerParam: nacosclient.NacosServerParam{
 						Endpoint:   dc.Spec.NacosServer.Endpoint,
@@ -215,7 +215,7 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 					DataId:  dataId,
 					Group:   nacosGroup,
 					Content: localContent,
-				}); err != nil {
+				}); err != nil || !success {
 					UpdateSyncStatus(&dc, nacosGroup, dataId, "", "cluster", metav1.Now(), false, fmt.Sprintf("publish config error: %s", err))
 					errConfigList = append(errConfigList, nacosGroup+"#"+dataId)
 					logWithGroup.Error(err, "publish nacos server config error", "dataId", dataId, "group", nacosGroup)
@@ -311,7 +311,7 @@ func (r *ConfigurationSyncController) configDataIdSync(l *logr.Logger, dataId st
 
 	} else if (!serverExist && localExist) || (serverExist && localExist && isPreferCluster) {
 		logWithDataId.Info("Config not exist in nacos server or preferCluster, try to sync Config to nacos server")
-		if _, err := r.configClient.PublishConfig(nacosclient.NacosConfigParam{
+		if success, err := r.configClient.PublishConfig(nacosclient.NacosConfigParam{
 			AuthRef: dc.Spec.NacosServer.AuthRef,
 			Key: types.NamespacedName{
 				Namespace: dc.Namespace,
@@ -325,7 +325,7 @@ func (r *ConfigurationSyncController) configDataIdSync(l *logr.Logger, dataId st
 			Group:   group,
 			DataId:  dataId,
 			Content: localContent,
-		}); err != nil {
+		}); err != nil || !success {
 			logWithDataId.Error(err, "publish Config to nacos server error")
 			*errConfigList = append(*errConfigList, group+"#"+dataId)
 			UpdateSyncStatus(dc, group, dataId, "", "server", metav1.Now(), false, "publish Config to nacos server error: "+err.Error())
