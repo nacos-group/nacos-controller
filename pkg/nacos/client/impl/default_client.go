@@ -63,6 +63,8 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.O
 	clientOpts := []constant.ClientOption{
 		constant.WithAccessKey(clientParams.AuthInfo.AccessKey),
 		constant.WithSecretKey(clientParams.AuthInfo.SecretKey),
+		constant.WithUsername(clientParams.AuthInfo.Username),
+		constant.WithPassword(clientParams.AuthInfo.Password),
 		constant.WithTimeoutMs(5000),
 		constant.WithNotLoadCacheAtStart(true),
 		constant.WithLogDir("/tmp/nacos/log"),

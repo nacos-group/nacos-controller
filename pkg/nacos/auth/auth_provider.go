@@ -5,14 +5,17 @@ import (
 	"fmt"
 	client2 "github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	secretAuthKeyAccessKey = "ak"
-	secretAuthKeySecretKey = "sk"
+	secretAuthKeyAccessKey = "accessKey"
+	secretAuthKeySecretKey = "secretKey"
+	secretAuthKeyUsername  = "username"
+	secretAuthKeyPassword  = "password"
 )
 
 var (
@@ -29,6 +32,8 @@ type ConfigClientParam struct {
 type ConfigClientAuthInfo struct {
 	AccessKey string
 	SecretKey string
+	Username  string
+	Password  string
 }
 
 type NacosAuthProvider interface {
@@ -79,20 +84,24 @@ func (p *DefaultNacosAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*C
 
 func (p *DefaultNacosAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
 	s := v1.Secret{}
-	err := p.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s)
-	if err != nil {
+	info := ConfigClientAuthInfo{}
+	if err := p.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s); err != nil {
+		if errors.IsNotFound(err) {
+			return &info, nil
+		}
 		return nil, err
 	}
-	info := ConfigClientAuthInfo{}
 	if v, ok := s.Data[secretAuthKeyAccessKey]; ok && len(v) > 0 {
 		info.AccessKey = string(v)
-	} else {
-		return nil, fmt.Errorf("empty field %s in secret %s", secretAuthKeyAccessKey, obj.Name)
 	}
 	if v, ok := s.Data[secretAuthKeySecretKey]; ok && len(v) > 0 {
 		info.SecretKey = string(v)
-	} else {
-		return nil, fmt.Errorf("empty field %s in secret %s", secretAuthKeySecretKey, obj.Name)
+	}
+	if v, ok := s.Data[secretAuthKeyUsername]; ok && len(v) > 0 {
+		info.Username = string(v)
+	}
+	if v, ok := s.Data[secretAuthKeyPassword]; ok && len(v) > 0 {
+		info.Password = string(v)
 	}
 	return &info, nil
 }
