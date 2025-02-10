@@ -49,12 +49,9 @@ func (m *ClientBuilder) Get(nacosServerParam client.NacosServerParam, key types.
 func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.ObjectReference, nacosServerParam client.NacosServerParam, key types.NamespacedName) (config_client.IConfigClient, error) {
 	cacheKey := fmt.Sprintf("%s-%s-%s-%s-%s", nacosServerParam.Endpoint, nacosServerParam.ServerAddr, nacosServerParam.Namespace, key.Namespace, key.Name)
 	cachedClient, ok := m.cache.Load(cacheKey)
-	fmt.Println("try build nacos client, cacheKey:" + cacheKey)
 	if ok && cachedClient != nil {
-		fmt.Println("cacheKey:" + cacheKey + " exist, return old one")
 		return cachedClient.(config_client.IConfigClient), nil
 	}
-	fmt.Println("cacheKey:" + cacheKey + " not exist, build new one")
 	clientParams, err := authProvider.GetNacosClientParams(authRef, nacosServerParam, key)
 	if err != nil {
 		return nil, err
