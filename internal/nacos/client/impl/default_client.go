@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
+	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
+	"github.com/nacos-group/nacos-controller/internal/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
@@ -33,7 +33,7 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, dc *nacosiov1
 	}
 	nacosServer := dc.Spec.NacosServer
 	// 简化判空逻辑，cacheKey仅内部使用
-	cacheKey := fmt.Sprintf("%s-%s-%s", nacosServer.Endpoint, nacosServer.ServerAddr, nacosServer.Namespace)
+	cacheKey := fmt.Sprintf("%s-%s-%s", *nacosServer.Endpoint, *nacosServer.ServerAddr, nacosServer.Namespace)
 	cachedClient, ok := m.cache.Load(cacheKey)
 	if ok && cachedClient != nil {
 		return cachedClient.(config_client.IConfigClient), nil

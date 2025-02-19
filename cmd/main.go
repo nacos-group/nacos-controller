@@ -17,12 +17,15 @@ limitations under the License.
 package main
 
 import (
+	"encoding/json"
 	"flag"
-	"github.com/nacos-group/nacos-controller/pkg/nacos"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
-	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
-	"k8s.io/client-go/kubernetes"
 	"os"
+
+	"github.com/nacos-group/nacos-controller/internal/nacos"
+	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
+	"github.com/nacos-group/nacos-controller/internal/nacos/client/impl"
+
+	"k8s.io/client-go/kubernetes"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/pkg/controller"
+	"github.com/nacos-group/nacos-controller/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -109,6 +112,29 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DynamicConfiguration")
 			os.Exit(1)
 		}
+	}
+
+	if err = (controller.NewServiceDiscoveryReconciler(mgr.GetClient(), clientSet)).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ServiceDiscovery")
+		os.Exit(1)
+	}
+
+	c := mgr.GetClient()
+	bytes, _ := json.Marshal(c)
+	setupLog.Info("client", "client", string(bytes))
+	if err = (&controller.EndpointReconciler{
+		Client: c,
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Endpoint")
+		os.Exit(1)
+	}
+	if err = (&controller.ServiceReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Service")
+		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 

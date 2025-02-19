@@ -1,11 +1,13 @@
-package model
+package naming
 
 import (
 	"encoding/json"
-
-	"github.com/nacos-group/nacos-k8s-sync/pkg/logger"
-	v1 "k8s.io/api/core/v1"
+	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/nacos-group/nacos-sdk-go/v2/common/logger"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -15,7 +17,7 @@ const (
 
 	// annotationServiceName is set to override the name of the service
 	// registered.
-	annotationServiceName = "nacos.io`/service-name"
+	annotationServiceName = "nacos.io/service-name"
 
 	// annotationServiceGroup is set to override the group of the service
 	// registered.
@@ -45,6 +47,35 @@ func ShouldServiceSync(svc *v1.Service) bool {
 	return v
 }
 
+func ConvertToAddresses(endpoints *v1.Endpoints, serviceInfo ServiceInfo) []Address {
+	addresses := make([]Address, 0)
+	bytes, _ := json.Marshal(endpoints)
+
+	fmt.Println("endpoints: ", string(bytes))
+	for _, subset := range endpoints.Subsets {
+		for _, address := range subset.Addresses {
+			if serviceInfo.Port > 0 {
+				addresses = append(addresses, Address{
+					IP:   address.IP,
+					Port: uint64(serviceInfo.Port),
+				})
+			} else {
+				addresses = append(addresses, Address{
+					IP:   address.IP,
+					Port: uint64(subset.Ports[0].Port),
+				})
+			}
+		}
+	}
+	bytes, _ = json.Marshal(addresses)
+	fmt.Println("address: ", string(bytes))
+	return addresses
+}
+
+func GetEndpointPort(ep *v1.EndpointPort) {
+	logger.Info("Get endpoint port")
+}
+
 func GenerateServiceInfo(svc *v1.Service) (ServiceInfo, error) {
 	serviceName := svc.Annotations[annotationServiceName]
 	if serviceName == "" {
@@ -56,10 +87,10 @@ func GenerateServiceInfo(svc *v1.Service) (ServiceInfo, error) {
 	port, err := strconv.ParseUint(svc.Annotations[annotationServicePort], 0, 0)
 	if err != nil {
 		logger.Info("Failed to parse the service's port, caused: " + err.Error())
-		return ServiceInfo{}, err
+		port = 0
 	}
 
-	var meta map[string]string
+	meta := make(map[string]string)
 	rawMeta := svc.Annotations[annotationServiceMeta]
 	if rawMeta != "" {
 		if err := json.Unmarshal([]byte(svc.Annotations[annotationServiceMeta]), &meta); err != nil {
@@ -68,12 +99,27 @@ func GenerateServiceInfo(svc *v1.Service) (ServiceInfo, error) {
 		}
 	}
 
+	for k, v := range svc.Annotations {
+		if !strings.HasPrefix(k, "nacos.io/") {
+			meta[k] = v
+		}
+	}
+
+	// We need to mark the service is synced by nacos controller
+	meta[NamingSyncedMark] = "true"
+
+	groupName := svc.Annotations[annotationServiceGroup]
+
+	if groupName == "" {
+		groupName = NamingDefaultGroupName
+	}
+
 	// Now we only trust the annotations.
 	// TODO Extract value from the spec of service resource for extended features
 	return ServiceInfo{
 		ServiceKey: ServiceKey{
 			ServiceName: serviceName,
-			Group:       svc.Annotations[annotationServiceGroup],
+			Group:       groupName,
 		},
 		Port:     port,
 		Metadata: meta,

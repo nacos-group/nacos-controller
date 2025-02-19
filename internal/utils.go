@@ -1,4 +1,4 @@
-package pkg
+package internal
 
 // Contains checks if the passed string is present in the given slice of strings.
 func Contains(list []string, s string) bool {

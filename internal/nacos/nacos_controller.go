@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	nacosclient "github.com/nacos-group/nacos-controller/pkg/nacos/client"
+	nacosclient "github.com/nacos-group/nacos-controller/internal/nacos/client"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"

@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -31,3 +32,12 @@ func StringSliceContains(arr []string, item string) bool {
 	}
 	return false
 }
+
+// func StringSliceRemove(arr []string, item string) []string {
+// 	for i, v := range arr {
+// 		if v == item {
+// 			return append(arr[:i], arr[i+1:]...)
+// 		}
+// 	}
+// 	return arr
+// }
