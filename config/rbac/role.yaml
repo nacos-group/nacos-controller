@@ -7,6 +7,32 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
   - endpoints
   verbs:
   - create
@@ -59,6 +85,7 @@ rules:
 - apiGroups:
   - nacos.io
   resources:
+  - configmaps
   - dynamicconfigurations
   verbs:
   - create
@@ -71,12 +98,14 @@ rules:
 - apiGroups:
   - nacos.io
   resources:
+  - configmaps/finalizers
   - dynamicconfigurations/finalizers
   verbs:
   - update
 - apiGroups:
   - nacos.io
   resources:
+  - configmaps/status
   - dynamicconfigurations/status
   verbs:
   - get
