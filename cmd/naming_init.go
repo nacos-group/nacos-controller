@@ -4,9 +4,9 @@ import (
 	"os"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/internal/controller"
-	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
-	"github.com/nacos-group/nacos-controller/internal/nacos/naming"
+	"github.com/nacos-group/nacos-controller/pkg/controller"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/naming"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 )

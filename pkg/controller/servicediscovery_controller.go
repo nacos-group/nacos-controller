@@ -25,9 +25,9 @@ import (
 	"sync/atomic"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/internal/nacos"
-	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
-	"github.com/nacos-group/nacos-controller/internal/nacos/naming"
+	"github.com/nacos-group/nacos-controller/pkg/nacos"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/naming"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

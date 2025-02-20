@@ -3,8 +3,8 @@ package controller
 import (
 	"fmt"
 	v12 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
-	"github.com/nacos-group/nacos-controller/internal/nacos/client/impl"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	. "github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"

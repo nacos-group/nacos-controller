@@ -21,9 +21,9 @@ import (
 	"flag"
 	"os"
 
-	"github.com/nacos-group/nacos-controller/internal/nacos"
-	"github.com/nacos-group/nacos-controller/internal/nacos/auth"
-	"github.com/nacos-group/nacos-controller/internal/nacos/client/impl"
+	"github.com/nacos-group/nacos-controller/pkg/nacos"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
 
 	"k8s.io/client-go/kubernetes"
 
@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
-	"github.com/nacos-group/nacos-controller/internal/controller"
+	"github.com/nacos-group/nacos-controller/pkg/controller"
 	//+kubebuilder:scaffold:imports
 )
 
