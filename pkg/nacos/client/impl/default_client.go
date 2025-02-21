@@ -2,6 +2,10 @@ package impl
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
@@ -10,9 +14,6 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 type ClientBuilder struct {
@@ -52,7 +53,7 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.O
 	if ok && cachedClient != nil {
 		return cachedClient.(config_client.IConfigClient), nil
 	}
-	clientParams, err := authProvider.GetNacosClientParams(authRef, nacosServerParam, key)
+	clientParams, err := authProvider.GetNacosClientParams(authRef, nacosServerParam, key.Namespace)
 	if err != nil {
 		return nil, err
 	}

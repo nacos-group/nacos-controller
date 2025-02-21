@@ -3,9 +3,9 @@ package auth
 import (
 	"context"
 	"fmt"
+
 	client2 "github.com/nacos-group/nacos-controller/pkg/nacos/client"
 
-	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -24,13 +24,6 @@ var (
 	secretGVK = schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Secret"}
 )
 
-type ConfigClientParam struct {
-	Endpoint   string
-	ServerAddr string
-	Namespace  string
-	AuthInfo   ConfigClientAuthInfo
-}
-
 type NacosClientParam struct {
 	Endpoint   string
 	ServerAddr string
@@ -38,21 +31,15 @@ type NacosClientParam struct {
 	AuthInfo   NacosClientAuthInfo
 }
 
-type ConfigClientAuthInfo struct {
+type NacosClientAuthInfo struct {
 	AccessKey string
 	SecretKey string
 	Username  string
 	Password  string
 }
 
-type NacosClientAuthInfo struct {
-	AccessKey string
-	SecretKey string
-}
-
 type NacosAuthProvider interface {
-	GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error)
-	GetNacosNamingClientParams(*nacosiov1.ServiceDiscovery) (*NacosClientParam, error)
+	GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, namespace string) (*NacosClientParam, error)
 }
 
 type DefaultNacosAuthProvider struct {
@@ -63,11 +50,11 @@ func NewDefaultNacosAuthProvider(c client.Client) NacosAuthProvider {
 	return &DefaultNacosAuthProvider{Client: c}
 }
 
-func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, key types.NamespacedName) (*ConfigClientParam, error) {
-	var authInfo = &ConfigClientAuthInfo{}
+func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectReference, nacosServerParam client2.NacosServerParam, namespace string) (*NacosClientParam, error) {
+	var authInfo = &NacosClientAuthInfo{}
 	if authRef != nil {
 		authRef = authRef.DeepCopy()
-		authRef.Namespace = key.Namespace
+		authRef.Namespace = namespace
 		var err error
 		authInfo, err = p.getNacosAuthInfo(authRef)
 		if err != nil {
@@ -75,14 +62,14 @@ func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectRefere
 		}
 	}
 	if len(nacosServerParam.Endpoint) > 0 {
-		return &ConfigClientParam{
+		return &NacosClientParam{
 			Endpoint:  nacosServerParam.Endpoint,
 			Namespace: nacosServerParam.Namespace,
 			AuthInfo:  *authInfo,
 		}, nil
 	}
 	if len(nacosServerParam.ServerAddr) > 0 {
-		return &ConfigClientParam{
+		return &NacosClientParam{
 			ServerAddr: nacosServerParam.ServerAddr,
 			Namespace:  nacosServerParam.Namespace,
 			AuthInfo:   *authInfo,
@@ -91,41 +78,7 @@ func (p *DefaultNacosAuthProvider) GetNacosClientParams(authRef *v1.ObjectRefere
 	return nil, fmt.Errorf("either endpoint or serverAddr should be set")
 }
 
-func (p *DefaultNacosAuthProvider) GetNacosNamingClientParams(sd *nacosiov1.ServiceDiscovery) (*NacosClientParam, error) {
-	if sd == nil {
-		return nil, fmt.Errorf("empty ServiceDiscovery")
-	}
-	serverConf := &sd.Spec.NacosServer
-	authRef := serverConf.AuthRef.DeepCopy()
-	authRef.Namespace = sd.Namespace
-
-	authInfo, err := p.getNacosNamingAuthInfo(authRef)
-
-	if err != nil {
-		fmt.Println("getNacosNamingClientParams, create empty NacosClientAuthInfo, err:", err)
-		authInfo = &NacosClientAuthInfo{}
-	}
-
-	if serverConf.Endpoint != "" {
-		return &NacosClientParam{
-			Endpoint:  serverConf.Endpoint,
-			Namespace: serverConf.Namespace,
-			AuthInfo:  *authInfo,
-		}, nil
-	}
-
-	if serverConf.ServerAddr != "" {
-		return &NacosClientParam{
-			ServerAddr: serverConf.ServerAddr,
-			Namespace:  serverConf.Namespace,
-			AuthInfo:   *authInfo,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("either endpoint or serverAddr should be set")
-}
-
-func (p *DefaultNacosAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
+func (p *DefaultNacosAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*NacosClientAuthInfo, error) {
 	switch obj.GroupVersionKind().String() {
 	case secretGVK.String():
 		return p.getNaocsAuthFromSecret(obj)
@@ -134,25 +87,9 @@ func (p *DefaultNacosAuthProvider) getNacosAuthInfo(obj *v1.ObjectReference) (*C
 	}
 }
 
-func (p *DefaultNacosAuthProvider) getNacosNamingAuthInfo(obj *v1.ObjectReference) (*NacosClientAuthInfo, error) {
-	switch obj.GroupVersionKind().String() {
-	case secretGVK.String():
-		if nacosAuthInfo, err := p.getNacosAuthInfo(obj); err == nil {
-			return &NacosClientAuthInfo{
-				AccessKey: nacosAuthInfo.AccessKey,
-				SecretKey: nacosAuthInfo.SecretKey,
-			}, nil
-		} else {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unsupported nacos auth reference type: %s", obj.GroupVersionKind().String())
-	}
-}
-
-func (p *DefaultNacosAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
+func (p *DefaultNacosAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*NacosClientAuthInfo, error) {
 	s := v1.Secret{}
-	info := ConfigClientAuthInfo{}
+	info := NacosClientAuthInfo{}
 	if err := p.Client.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s); err != nil {
 		if errors.IsNotFound(err) {
 			return &info, nil
