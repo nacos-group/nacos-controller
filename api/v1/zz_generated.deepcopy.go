@@ -339,7 +339,8 @@ func (in *ServiceDiscoveryStatus) DeepCopyInto(out *ServiceDiscoveryStatus) {
 			if val == nil {
 				(*out)[key] = nil
 			} else {
-				in, out := &val, &outVal
+				inVal := (*in)[key]
+				in, out := &inVal, &outVal
 				*out = new(ServiceSyncStatus)
 				(*in).DeepCopyInto(*out)
 			}

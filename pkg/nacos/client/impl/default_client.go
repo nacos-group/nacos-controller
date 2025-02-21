@@ -110,7 +110,7 @@ type DefaultNacosConfigClient struct {
 func (c *DefaultNacosConfigClient) CancelListenConfig(param client.NacosConfigParam) error {
 	proxyClient, err := c.clientBuilder.Get(param.NacosServerParam, param.Key)
 	if err != nil {
-		return fmt.Errorf("get proxyClient failed", err)
+		return fmt.Errorf("get proxyClient failed, %v", err)
 	}
 	return proxyClient.CancelListenConfig(vo.ConfigParam{
 		Group:  param.Group,

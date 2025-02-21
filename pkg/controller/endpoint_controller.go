@@ -114,8 +114,8 @@ func (r *EndpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	log.Log.Info("Sync instance to nacos", "serviceInfo", serviceInfo.ServiceName)
 	for _, sd := range svcSds {
 
-		if sd.Spec.NacosServer.ServerAddr != nil {
-			log.Log.Info("Sync instance to nacos", "serverAddr", *sd.Spec.NacosServer.ServerAddr)
+		if sd.Spec.NacosServer.ServerAddr != "" {
+			log.Log.Info("Sync instance to nacos", "serverAddr", sd.Spec.NacosServer.ServerAddr)
 			if err := r.SyncInstanceToNacos(ctx, es, serviceInfo, sd); err != nil {
 				return ctrl.Result{}, err
 			}

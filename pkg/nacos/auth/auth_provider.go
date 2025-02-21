@@ -106,17 +106,17 @@ func (p *DefaultNacosAuthProvider) GetNacosNamingClientParams(sd *nacosiov1.Serv
 		authInfo = &NacosClientAuthInfo{}
 	}
 
-	if serverConf.Endpoint != nil {
+	if serverConf.Endpoint != "" {
 		return &NacosClientParam{
-			Endpoint:  *serverConf.Endpoint,
+			Endpoint:  serverConf.Endpoint,
 			Namespace: serverConf.Namespace,
 			AuthInfo:  *authInfo,
 		}, nil
 	}
 
-	if serverConf.ServerAddr != nil {
+	if serverConf.ServerAddr != "" {
 		return &NacosClientParam{
-			ServerAddr: *serverConf.ServerAddr,
+			ServerAddr: serverConf.ServerAddr,
 			Namespace:  serverConf.Namespace,
 			AuthInfo:   *authInfo,
 		}, nil
@@ -153,7 +153,7 @@ func (p *DefaultNacosAuthProvider) getNacosNamingAuthInfo(obj *v1.ObjectReferenc
 func (p *DefaultNacosAuthProvider) getNaocsAuthFromSecret(obj *v1.ObjectReference) (*ConfigClientAuthInfo, error) {
 	s := v1.Secret{}
 	info := ConfigClientAuthInfo{}
-	if err := p.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s); err != nil {
+	if err := p.Client.Get(context.TODO(), types.NamespacedName{Namespace: obj.Namespace, Name: obj.Name}, &s); err != nil {
 		if errors.IsNotFound(err) {
 			return &info, nil
 		}

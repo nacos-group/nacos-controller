@@ -41,7 +41,7 @@ func (m *NacosNamingClientBuilder) BuildNamingClient(authProvider auth.NacosAuth
 
 	nacosServer := sd.Spec.NacosServer
 	// 简化判空逻辑，cacheKey仅内部使用
-	cacheKey := fmt.Sprintf("%s-%s", *nacosServer.ServerAddr, nacosServer.Namespace)
+	cacheKey := fmt.Sprintf("%s-%s", nacosServer.ServerAddr, nacosServer.Namespace)
 	cachedClient, ok := m.cache.Load(cacheKey)
 	if ok && cachedClient != nil {
 		return cachedClient.(*NacosNamingClient), nil

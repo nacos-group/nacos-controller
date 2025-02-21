@@ -3,6 +3,9 @@ package nacos
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/go-logr/logr"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	nacosclient "github.com/nacos-group/nacos-controller/pkg/nacos/client"
@@ -13,8 +16,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
-	"strings"
 )
 
 type DynamicConfigurationUpdateController struct {
