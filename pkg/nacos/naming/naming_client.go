@@ -11,6 +11,7 @@ import (
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
+	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
@@ -46,7 +47,13 @@ func (m *NacosNamingClientBuilder) BuildNamingClient(authProvider auth.NacosAuth
 	if ok && cachedClient != nil {
 		return cachedClient.(*NacosNamingClient), nil
 	}
-	clientParams, err := authProvider.GetNacosNamingClientParams(sd)
+	//clientParams, err := authProvider.GetNacosNamingClientParams(sd)
+	nacosServerParam := client.NacosServerParam{
+		Endpoint:   nacosServer.Endpoint,
+		Namespace:  nacosServer.Namespace,
+		ServerAddr: nacosServer.ServerAddr,
+	}
+	clientParams, err := authProvider.GetNacosClientParams(sd.Spec.NacosServer.AuthRef, nacosServerParam, sd.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +61,8 @@ func (m *NacosNamingClientBuilder) BuildNamingClient(authProvider auth.NacosAuth
 	clientOpts := []constant.ClientOption{
 		constant.WithAccessKey(clientParams.AuthInfo.AccessKey),
 		constant.WithSecretKey(clientParams.AuthInfo.SecretKey),
+		constant.WithPassword(clientParams.AuthInfo.Password),
+		constant.WithPassword(clientParams.AuthInfo.Username),
 		constant.WithTimeoutMs(5000),
 		constant.WithNotLoadCacheAtStart(true),
 		constant.WithLogDir("/tmp/nacos/log"),
