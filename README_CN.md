@@ -6,8 +6,8 @@
 
 [English Document](./README.md)
 
-## 快速开始
-### 部署Nacos Controller
+# 快速开始
+## 部署Nacos Controller
 1. 安装helm，参考[文档](https://helm.sh/docs/intro/install/)
 2. 安装Nacos Controller
 ```bash
@@ -18,103 +18,114 @@ export KUBECONFIG=/你的K8s集群/访问凭证/文件路径
 kubectl create ns nacos
 helm install -n nacos nacos-controller .
 ```
+## Nacos和K8s集群配置同步
+Nacos Controller 2.0 支持Kubernetes集群配置和Nacos 配置的双向同步，支持将Kubernetes集群特定命名空间下的ConfigMap以及Secret同步到Nacos指定命名空间下中。用户可以通过Nacos实现对于Kubenetes集群配置的动态修改和管理。Nacos配置和Kubernetes配置的映射关系如下表所示:
 
-### 从集群中同步配置到Nacos中
-1. 一份Secret配置Nacos Server访问凭证，需包含ak和sk字段
-2. 一份ConfigMap配置DataId和Content
-3. 一份DynamicConfiguration定义微服务配置同步行为
-   - spec.dataIds：定义哪些dataId需要被同步
-   - spec.nacosServer：定义NacosServer信息
-   - spec.strategy：定义同步策略
-   - spec.objectRef：引用存放DataId和Content的载体
+| ConfigMap/Secret | Nacos Config    |
+|------------------|-----------------|
+| Namespace        | 用户指定的命名空间       |
+| Name             | Group           |
+| Key              | DataId          |
+| Value            | Content         |
+
+目前主要支持两种配置同步的策略：
+- 全量同步：Kubernetes集群特定命名空间下的所有ConfigMap以及Secret自动同步至Nacos,Nacos Controller会自动同步所有新建的ConfigMap和Secret
+- 部分同步：只同步用户指定的ConfigMap和Secret至Nacos
+
+### K8s集群命名空间配置全量同步Nacos
+编写DynamicConfiguration yaml文件：
 ```yaml
 apiVersion: nacos.io/v1
 kind: DynamicConfiguration
 metadata:
-    name: dc-demo-cluster2server
+   name: dc-demo
 spec:
-  dataIds:
-  - data-id1.properties
-  - data-id2.yml
-  nacosServer:
-    endpoint: <your-nacos-server-endpoint>
-    namespace: <your-nacos-namespace-id>
-    group: <your-nacos-group>
-    authRef:
-      apiVersion: v1
-      kind: Secret
-      name: nacos-auth
-  strategy:
-    syncPolicy: Always
-    syncDirection: cluster2server
-    syncDeletion: true
-  objectRef:
-    apiVersion: v1
-    kind: ConfigMap
-    name: nacos-config-cm
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-    name: nacos-config-cm
-    namespace: default
-data:
-    data-id1.properties: |
-      key=value
-      key2=value2
-    data-id2.yml: |
-      app:
-        name: test
-
+   nacosServer:
+      # endpoint: nacos地址服务器，与serverAddr互斥，优先级高于serverAddr，与serverAddr二选一即可
+      endpoint: <your-nacos-server-endpoint>
+      # serverAddr: nacos地址，与endpoint二选一即可
+      serverAddr: <your-nacos-server-addr>
+      # namespace: 用户指定的命名空间
+      namespace: <your-nacos-namespace-id>
+      # authRef: 引用存放Nacos 客户端鉴权信息的Secret，支持用户名/密码 和 AK/SK, Nacos服务端未开启鉴权可忽略
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+   strategy:
+      # scope: 同步策略，full 表示全量同步，partial 表示部分同步
+      scope: full
+      # 是否同步配置删除操作
+      syncDeletion: true
+      # conflictPolicy: 同步冲突策略，preferCluster 表示初次同步内容冲突时以Kubernetes集群配置为准，preferServer 表示以Nacos配置为准
+      conflictPolicy: preferCluster
 ---
 apiVersion: v1
 kind: Secret
 metadata:
     name: nacos-auth
 data:
-    ak: <base64 ak>
-    sk: <base64 sk>
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
 ```
-
-### 从Nacos中同步配置到集群中
-1. 一份Secret配置Nacos Server访问凭证，需包含ak和sk字段
-2. 一份ConfigMap用于存放DataId和Content（可选行为，不存在载体则自动创建）
-3. 一份DynamicConfiguration定义微服务配置同步行为
-    - spec.dataIds：定义哪些dataId需要被同步
-    - spec.nacosServer：定义NacosServer信息
-    - spec.strategy：定义同步策略
-    - spec.objectRef：引用存放DataId和Content的载体（可选配置，留空则默认创建同名ConfigMap作为载体）
+执行命令部署DynamicConfiguration到需要全量同步的Kubenetes集群命名空间下：
+```bash
+kubectl apply -f dc-demo.yaml -n <namespace>
+```
+即可实现配置的全量同步
+### K8s集群命名空间配置部分同步Nacos
+编写DynamicConfiguration yaml文件,和全量同步的区别主要在于strategy部分，并且要指定需要同步的ConfigMap和Secret：
 ```yaml
 apiVersion: nacos.io/v1
 kind: DynamicConfiguration
 metadata:
-    name: dc-demo-server2cluster
+   name: dc-demo
 spec:
-  dataIds:
-  - data-id1.properties
-  - data-id2.yml
-  nacosServer:
-    endpoint: <your-nacos-server-endpoint>
-    namespace: <your-nacos-namespace-id>
-    group: <your-nacos-group>
-    authRef:
-      apiVersion: v1
-      kind: Secret
-      name: nacos-auth
-  strategy:
-    syncPolicy: Always
-    syncDirection: server2cluster
-    syncDeletion: true
+   nacosServer:
+      # endpoint: nacos地址服务器，与serverAddr互斥，优先级高于serverAddr，与serverAddr二选一即可
+      endpoint: <your-nacos-server-endpoint>
+      # serverAddr: nacos地址，与endpoint二选一即可
+      serverAddr: <your-nacos-server-addr>
+      # namespace: 用户指定的命名空间
+      namespace: <your-nacos-namespace-id>
+      # authRef: 引用存放Nacos 客户端鉴权信息的Secret，支持用户名/密码 和 AK/SK, Nacos服务端未开启鉴权可忽略
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+   strategy:
+      # scope: 同步策略，full 表示全量同步，partial 表示部分同步
+      scope: partial
+      # 是否同步配置删除操作
+      syncDeletion: true
+      # conflictPolicy: 同步冲突策略，preferCluster 表示初次同步内容冲突时以Kubernetes集群配置为准，preferServer 表示以Nacos配置为准
+      conflictPolicy: preferCluster
+   # 需要同步的ConfigMap和Secret
+   objectRefs:
+      - apiVersion: v1
+        kind: ConfigMap
+        name: nacos-config-cm
+      - apiVersion: v1
+        kind: Secret
+        name: nacos-config-secret
 ---
 apiVersion: v1
 kind: Secret
 metadata:
     name: nacos-auth
 data:
-    ak: <base64 ak>
-    sk: <base64 sk>
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
 ```
+执行命令部署DynamicConfiguration到需要全量同步的Kubenetes集群命名空间下：
+```bash
+kubectl apply -f dc-demo.yaml -n <namespace>
+```
+即可实现配置的部分同步
 
 ### NacosServer配置
 字段说明：
@@ -122,7 +133,7 @@ data:
 - serverAddr: nacos地址，与endpoint互斥
 - namespace: nacos空间ID
 - group: nacos分组
-- authRef: 引用存放Nacos AK/SK的资源，当前仅支持Secret
+- authRef: 引用存放Nacos 客户端鉴权信息的资源，支持用户名/密码 和 AK/SK
 ```yaml
   nacosServer:
     endpoint: <your-nacos-server-endpoint>
