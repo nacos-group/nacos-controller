@@ -78,7 +78,7 @@ kubectl apply -f dc-demo.yaml -n <namespace>
 ```
 and the full synchronization of configurations will be achieved.
 
-### K8s集群命名空间配置部分同步Nacos
+### Partial Synchronization from K8s Namespace to Nacos
 Create a DynamicConfiguration YAML file. The main difference from full synchronization lies in the strategy section, and you need to specify the ConfigMap and Secret that require synchronization:
 ```yaml
 apiVersion: nacos.io/v1
