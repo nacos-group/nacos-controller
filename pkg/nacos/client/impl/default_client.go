@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
@@ -69,6 +70,9 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.O
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 		constant.WithNamespaceId(clientParams.Namespace),
+		constant.WithAppConnLabels(map[string]string{"k8s.namespace": key.Namespace,
+			"k8s.cluster": pkg.CurrentContext,
+			"k8s.name":    key.Name}),
 	}
 	if len(clientParams.Endpoint) > 0 {
 		clientOpts = append(clientOpts, constant.WithEndpoint(clientParams.Endpoint))
@@ -136,9 +140,10 @@ func (c *DefaultNacosConfigClient) PublishConfig(param client.NacosConfigParam) 
 		return false, err
 	}
 	return proxyClient.PublishConfig(vo.ConfigParam{
-		Group:   param.Group,
-		DataId:  param.DataId,
-		Content: param.Content,
+		Group:      param.Group,
+		DataId:     param.DataId,
+		Content:    param.Content,
+		ConfigTags: "k8s.cluster/" + pkg.CurrentContext + "," + "k8s.namespace/" + param.Key.Namespace + "," + "k8s.name/" + param.Key.Name,
 	})
 }
 
