@@ -338,7 +338,10 @@ func (sw *SecretWrapper) StoreContent(dataId string, content string) error {
 			return err
 		}
 	}
-	StoreSecretContent(sw.secret, dataId, content)
+	err := StoreSecretContent(sw.secret, dataId, content)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -357,7 +360,10 @@ func (sw *SecretWrapper) StoreContentLatest(dataId string, content string) error
 		secret.Namespace = sw.ObjectRef.Namespace
 		secret.Name = sw.ObjectRef.Name
 	}
-	StoreSecretContent(secret, dataId, content)
+	err = StoreSecretContent(secret, dataId, content)
+	if err != nil {
+		return err
+	}
 	if !controllerutil.ContainsFinalizer(secret, pkg.FinalizerName) {
 		controllerutil.AddFinalizer(secret, pkg.FinalizerName)
 	}
