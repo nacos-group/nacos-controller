@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -88,11 +89,22 @@ func (r *DynamicConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		l.Error(err, "sync error")
 		nacos.FailedStatus(&dc, err.Error())
-		_ = r.Status().Update(ctx, &dc)
-		return ctrl.Result{}, err
+		err_ := r.Status().Update(ctx, &dc)
+		if err_ != nil && errors.IsConflict(err_) {
+			return ctrl.Result{Requeue: true}, err
+		} else {
+			return ctrl.Result{}, err
+		}
 	}
 	nacos.UpdateStatus(&dc)
-	return ctrl.Result{}, r.Status().Update(ctx, &dc)
+	err = r.Status().Update(ctx, &dc)
+	if err != nil {
+		if errors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 func (r *DynamicConfigurationReconciler) ensureFinalizer(ctx context.Context, obj client.Object) error {

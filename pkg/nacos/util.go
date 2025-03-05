@@ -2,13 +2,15 @@ package nacos
 
 import (
 	"crypto/md5"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
+
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 var (
@@ -111,23 +113,24 @@ func GetConfigMapContent(configMap *v1.ConfigMap, dataId string) (string, bool) 
 func GetSecretContent(secret *v1.Secret, dataId string) (string, bool) {
 	data := secret.Data
 	if v, ok := data[dataId]; ok {
-		return string(v), true
+		return base64.StdEncoding.EncodeToString(v), true
+		//return string(v), true
 	}
 	return "", false
 }
 
-func StoreContent(object client.Object, dataId string, content string) {
+func StoreContent(object client.Object, dataId string, content string) error {
 	switch object.GetObjectKind().GroupVersionKind().Kind {
 	case "ConfigMap":
-		StoreConfigMapContent(object.(*v1.ConfigMap), dataId, content)
+		return StoreConfigMapContent(object.(*v1.ConfigMap), dataId, content)
 	case "Secret":
-		StoreSecretContent(object.(*v1.Secret), dataId, content)
+		return StoreSecretContent(object.(*v1.Secret), dataId, content)
 	default:
-		return
+		return nil
 	}
 }
 
-func StoreConfigMapContent(configMap *v1.ConfigMap, dataId string, content string) {
+func StoreConfigMapContent(configMap *v1.ConfigMap, dataId string, content string) error {
 	if strings.HasPrefix(content, "{") || strings.HasPrefix(content, "[") {
 		if configMap.BinaryData == nil {
 			configMap.BinaryData = map[string][]byte{}
@@ -139,13 +142,19 @@ func StoreConfigMapContent(configMap *v1.ConfigMap, dataId string, content strin
 		}
 		configMap.Data[dataId] = content
 	}
+	return nil
 }
 
-func StoreSecretContent(secret *v1.Secret, dataId string, content string) {
+func StoreSecretContent(secret *v1.Secret, dataId string, content string) error {
 	if secret.Data == nil {
 		secret.Data = map[string][]byte{}
 	}
-	secret.Data[dataId] = []byte(content)
+	base64content, err := base64.StdEncoding.DecodeString(content)
+	if err != nil {
+		return err
+	}
+	secret.Data[dataId] = []byte(base64content)
+	return nil
 }
 
 func CompareDataIds(listenDataIds []string, localDataIds []string) ([]string, []string, []string) {

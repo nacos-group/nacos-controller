@@ -20,7 +20,7 @@ kubectl create ns nacos
 helm install -n nacos nacos-controller .
 ```
 ## Nacos和K8s集群配置同步
-Nacos Controller 2.0 支持Kubernetes集群配置和Nacos 配置的双向同步，支持将Kubernetes集群特定命名空间下的ConfigMap以及Secret同步到Nacos指定命名空间下中。用户可以通过Nacos实现对于Kubenetes集群配置的动态修改和管理。Nacos配置和Kubernetes配置的映射关系如下表所示:
+Nacos Controller 2.0 支持Kubernetes集群配置和Nacos 配置的双向同步，支持将Kubernetes集群特定命名空间下的ConfigMap以及Secret同步到Nacos指定命名空间下中。用户可以通过Nacos实现对于Kubernetes集群配置的动态修改和管理。Nacos配置和Kubernetes配置的映射关系如下表所示:
 
 | ConfigMap/Secret | Nacos Config    |
 |------------------|-----------------|
@@ -71,7 +71,7 @@ data:
     username: <base64 your-nacos-username>
     password: <base64 your-nacos-password>
 ```
-执行命令部署DynamicConfiguration到需要全量同步的Kubenetes集群命名空间下：
+执行命令部署DynamicConfiguration到需要全量同步的Kubernetes集群命名空间下：
 ```bash
 kubectl apply -f dc-demo.yaml -n <namespace>
 ```
@@ -122,7 +122,7 @@ data:
     username: <base64 your-nacos-username>
     password: <base64 your-nacos-password>
 ```
-执行命令部署DynamicConfiguration到需要全量同步的Kubenetes集群命名空间下：
+执行命令部署DynamicConfiguration到需要全量同步的Kubernetes集群命名空间下：
 ```bash
 kubectl apply -f dc-demo.yaml -n <namespace>
 ```

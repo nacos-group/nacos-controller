@@ -3,6 +3,8 @@ package nacos
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-logr/logr"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	"github.com/nacos-group/nacos-controller/pkg"
@@ -14,7 +16,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strings"
 )
 
 type ConfigurationSyncController struct {
@@ -126,6 +127,10 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 		if !DynamicConfigurationMatch(object, &dc) {
 			continue
 		}
+		server2Cluster := NewDefaultServer2ClusterCallback(r.client, r.clientSet, r.locks, types.NamespacedName{
+			Namespace: dc.Namespace,
+			Name:      dc.Name,
+		}, configMapRef)
 		listenDataIds, groupExist := dc.Status.ListenConfigs[nacosGroup]
 		if !groupExist {
 			r.configGroupSync(&l, object, &dc, &errConfigList)
@@ -134,6 +139,29 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 				logWithGroup.Error(err, "update DynamicConfiguration status error", "DynamicConfiguration", dc)
 			}
 			continue
+		}
+		for _, dataId := range listenDataIds {
+			logWithDataId := logWithGroup.WithValues("dataId", dataId)
+			err := r.configClient.ListenConfig(nacosclient.NacosConfigParam{
+				AuthRef: dc.Spec.NacosServer.AuthRef,
+				Key: types.NamespacedName{
+					Namespace: dc.Namespace,
+					Name:      dc.Name,
+				},
+				NacosServerParam: nacosclient.NacosServerParam{
+					Endpoint:   dc.Spec.NacosServer.Endpoint,
+					ServerAddr: dc.Spec.NacosServer.ServerAddr,
+					Namespace:  dc.Spec.NacosServer.Namespace,
+				},
+				Group:    nacosGroup,
+				DataId:   dataId,
+				OnChange: server2Cluster.Callback,
+			})
+			if err != nil {
+				logWithDataId.Error(err, "listen Config from nacos server error")
+				errConfigList = append(errConfigList, nacosGroup+"#"+dataId)
+				UpdateSyncStatus(&dc, nacosGroup, dataId, "", "server", metav1.Now(), false, "listen Config from nacos server error: "+err.Error())
+			}
 		}
 		listenOnly, localOnly, bothIds := CompareDataIds(listenDataIds, localDataIds)
 		for _, dataId := range listenOnly {
@@ -164,17 +192,18 @@ func (r *ConfigurationSyncController) DoReconcile(ctx context.Context, object cl
 				logWithGroup.Info("ignore delete nacos server config due to the syncDeletion false", "dataId", dataId, "group", nacosGroup)
 			}
 		}
-		server2Cluster := NewDefaultServer2ClusterCallback(r.client, r.clientSet, r.locks, types.NamespacedName{
-			Namespace: dc.Namespace,
-			Name:      dc.Name,
-		}, configMapRef)
 		for _, dataId := range localOnly {
 			r.configDataIdSync(&logWithGroup, dataId, object, &dc, &errConfigList, server2Cluster)
 		}
 		for _, dataId := range bothIds {
 			localContent, localExist := GetContent(object, dataId)
 			syncStatus := GetSyncStatusByDataId(&dc, nacosGroup, dataId)
-			oldMd5 := syncStatus.Md5
+			var oldMd5 string
+			if syncStatus != nil {
+				oldMd5 = syncStatus.Md5
+			} else {
+				oldMd5 = CalcMd5("")
+			}
 			newMd5 := CalcMd5(localContent)
 			if !localExist || len(localContent) == 0 {
 				if oldMd5 != newMd5 && dc.Spec.Strategy.SyncDeletion {

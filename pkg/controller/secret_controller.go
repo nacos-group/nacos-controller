@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -81,13 +82,22 @@ func (r *SecretReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, r.doFinalization(ctx, &secret)
 	}
 	if err := r.ensureFinalizer(ctx, &secret); err != nil {
+		if errors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
 		return ctrl.Result{}, err
 	}
 	if err := r.controller.DoReconcile(ctx, &secret); err != nil {
 		l.Error(err, "doReconcile error")
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, r.Update(ctx, &secret)
+	if err := r.Update(ctx, &secret); err != nil {
+		if errors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
