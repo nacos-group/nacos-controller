@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	v1 "k8s.io/api/core/v1"
@@ -79,13 +80,23 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, r.doFinalization(ctx, &configMap)
 	}
 	if err := r.ensureFinalizer(ctx, &configMap); err != nil {
+		if errors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
 		return ctrl.Result{}, err
 	}
 	if err := r.controller.DoReconcile(ctx, &configMap); err != nil {
 		l.Error(err, "doReconcile error")
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, r.Update(ctx, &configMap)
+	err := r.Update(ctx, &configMap)
+	if err != nil {
+		if errors.IsConflict(err) {
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -12,6 +12,7 @@ import (
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -172,6 +173,20 @@ func (c *DefaultNacosConfigClient) ListenConfig(param client.NacosConfigParam) e
 
 func (c *DefaultNacosConfigClient) CloseClient(param client.NacosConfigParam) {
 	c.clientBuilder.Remove(param.NacosServerParam, param.Key)
+}
+
+func (c *DefaultNacosConfigClient) SearchConfigs(param client.SearchConfigParam) (*model.ConfigPage, error) {
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
+	if err != nil {
+		return nil, fmt.Errorf("get proxyClient failed, %v", err)
+	}
+	return proxyClient.SearchConfig(vo.SearchConfigParam{
+		Search:   "blur",
+		Group:    param.Group,
+		DataId:   param.DataId,
+		PageNo:   param.PageNo,
+		PageSize: param.PageSize,
+	})
 }
 
 func NewDefaultNacosConfigClient(p auth.NacosAuthProvider) client.NacosConfigClient {

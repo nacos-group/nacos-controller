@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-logr/logr"
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/pkg"
 	nacosclient "github.com/nacos-group/nacos-controller/pkg/nacos/client"
+	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,10 +23,11 @@ import (
 )
 
 type DynamicConfigurationUpdateController struct {
-	client       client.Client
-	cs           *kubernetes.Clientset
-	locks        *LockManager
-	configClient nacosclient.NacosConfigClient
+	client         client.Client
+	cs             *kubernetes.Clientset
+	locks          *LockManager
+	configClient   nacosclient.NacosConfigClient
+	fuzzyListenMap sync.Map
 }
 
 type SyncConfigOptions struct {
@@ -38,14 +43,16 @@ func NewDynamicConfigurationUpdateController(c client.Client, cs *kubernetes.Cli
 		opt.Locks = NewLockManager()
 	}
 	return &DynamicConfigurationUpdateController{
-		client:       c,
-		cs:           cs,
-		locks:        opt.Locks,
-		configClient: opt.ConfigClient,
+		client:         c,
+		cs:             cs,
+		locks:          opt.Locks,
+		configClient:   opt.ConfigClient,
+		fuzzyListenMap: sync.Map{},
 	}
 }
 
 func (scc *DynamicConfigurationUpdateController) SyncDynamicConfiguration(ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
+	fmt.Printf("hahahahah")
 	if dc == nil {
 		return fmt.Errorf("empty DynamicConfiguration")
 	}
@@ -53,13 +60,182 @@ func (scc *DynamicConfigurationUpdateController) SyncDynamicConfiguration(ctx co
 	mark := strconv.Itoa(rand.Intn(100))
 	l := log.FromContext(ctx, "DynamicConfigurationSync", dc.Namespace+"."+dc.Name)
 	l.WithValues("mark", mark)
+	var err error
 	if dc.Spec.Strategy.SyncScope == nacosiov1.SyncScopeFull {
-		return scc.syncFull(&l, ctx, dc)
+		err = scc.syncFull(&l, ctx, dc)
+	} else if dc.Spec.Strategy.SyncScope == nacosiov1.SyncScopePartial {
+		err = scc.syncPartial(&l, ctx, dc)
+	} else {
+		return fmt.Errorf("unsupport sync scope: %s", string(strategy.SyncScope))
 	}
-	if dc.Spec.Strategy.SyncScope == nacosiov1.SyncScopePartial {
-		return scc.syncPartial(&l, ctx, dc)
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("unsupport sync scope: %s", string(strategy.SyncScope))
+	return scc.FuzzyListenConfig(&l, ctx, dc)
+}
+
+type FuzzyListenTask struct {
+	dcKey        types.NamespacedName
+	stopSignal   chan struct{}
+	configClient nacosclient.NacosConfigClient
+	client       client.Client
+	ctx          context.Context
+	cs           *kubernetes.Clientset
+	locks        *LockManager
+}
+
+func (f *FuzzyListenTask) stop() {
+	go func() {
+		l := log.FromContext(f.ctx, "FuzzyListenLoop", f.dcKey.Namespace+"."+f.dcKey.Name)
+		l.Info("stop signal send")
+		f.stopSignal <- struct{}{}
+	}()
+}
+func (f *FuzzyListenTask) start() {
+	go func() {
+		l := log.FromContext(f.ctx, "FuzzyListenLoop", f.dcKey.Namespace+"."+f.dcKey.Name)
+		timer := time.NewTimer(15 * time.Second)
+		defer timer.Stop()
+		for {
+			select {
+			case <-timer.C:
+				l.Info("start fuzzy listen")
+				err := f.FuzzyListen()
+				if err != nil {
+					return
+				}
+			case <-f.ctx.Done():
+				l.Info("stop fuzzy listen")
+				return
+			case <-f.stopSignal:
+				l.Info("stop fuzzy listen")
+				return
+			}
+			timer.Reset(15 * time.Second)
+		}
+	}()
+}
+
+func (f *FuzzyListenTask) FuzzyListen() error {
+	l := log.FromContext(f.ctx, "FuzzyListen", f.dcKey.Namespace+"."+f.dcKey.Name)
+	dc := &nacosiov1.DynamicConfiguration{}
+	if err := f.client.Get(f.ctx, f.dcKey, dc); err != nil {
+		l.Error(err, "get DynamicConfiguration error")
+		return err
+	}
+	fuzzyPatternList := make([]FuzzyPattern, 0)
+	if dc.Spec.Strategy.SyncScope == nacosiov1.SyncScopeFull {
+		fuzzyPatternList = append(fuzzyPatternList, FuzzyPattern{
+			DataId: "*",
+			Group:  "configmap.*",
+		})
+		fuzzyPatternList = append(fuzzyPatternList, FuzzyPattern{
+			DataId: "*",
+			Group:  "secret.*",
+		})
+	} else if dc.Spec.Strategy.SyncScope == nacosiov1.SyncScopePartial {
+		for _, objectRef := range dc.Spec.ObjectRefs {
+			fuzzyPatternList = append(fuzzyPatternList, FuzzyPattern{
+				DataId: "*",
+				Group:  strings.ToLower(objectRef.Kind) + "." + objectRef.Name,
+			})
+		}
+	}
+
+	checkConfigList := make([]model.ConfigItem, 0)
+	for _, fuzzyPattern := range fuzzyPatternList {
+		var pageNo = 1
+		var pageSize = 20
+		for {
+			configPage, err := f.configClient.SearchConfigs(nacosclient.SearchConfigParam{
+				AuthRef: dc.Spec.NacosServer.AuthRef,
+				Key: types.NamespacedName{
+					Namespace: dc.Namespace,
+					Name:      dc.Name,
+				},
+				NacosServerParam: nacosclient.NacosServerParam{
+					Endpoint:   dc.Spec.NacosServer.Endpoint,
+					ServerAddr: dc.Spec.NacosServer.ServerAddr,
+					Namespace:  dc.Spec.NacosServer.Namespace,
+				},
+				Group:    fuzzyPattern.Group,
+				DataId:   fuzzyPattern.DataId,
+				PageNo:   pageNo,
+				PageSize: pageSize,
+			})
+			if err != nil || configPage == nil || configPage.PageItems == nil {
+				break
+			}
+			checkConfigList = append(checkConfigList, configPage.PageItems...)
+			if len(configPage.PageItems) == pageSize {
+				pageNo++
+			} else {
+				break
+			}
+		}
+	}
+	for _, checkConfig := range checkConfigList {
+		if dc.Status.ListenConfigs == nil || dc.Status.ListenConfigs[checkConfig.Group] == nil || !pkg.Contains(dc.Status.ListenConfigs[checkConfig.Group], checkConfig.DataId) {
+			l.Info("fuzzy listen config", "group", checkConfig.Group, "dataId", checkConfig.DataId)
+			kind := strings.Split(checkConfig.Group, ".")[0]
+			if kind == "configmap" {
+				kind = "ConfigMap"
+			} else if kind == "secret" {
+				kind = "Secret"
+			}
+			objectRef := v1.ObjectReference{
+				Kind:       kind,
+				APIVersion: "v1",
+				Namespace:  dc.Namespace,
+				Name:       strings.Split(checkConfig.Group, ".")[1],
+			}
+			objWrapper, err := NewObjectReferenceWrapper(f.cs, dc, &objectRef)
+			if err != nil {
+				l.Error(err, "create object reference wrapper error", "obj", objectRef)
+				continue
+			}
+			content, _, _ := objWrapper.GetContentLatest(checkConfig.DataId)
+			if len(content) > 0 {
+				continue
+			}
+			err = objWrapper.StoreContentLatest(checkConfig.DataId, checkConfig.Content)
+			if err != nil {
+				l.Error(err, "store content error", "dc", dc.Name, "group", checkConfig.Group, "dataId", checkConfig.DataId)
+				continue
+			}
+		}
+	}
+	return nil
+}
+
+type FuzzyPattern struct {
+	Group  string
+	DataId string
+}
+
+func (scc *DynamicConfigurationUpdateController) FuzzyListenConfig(l *logr.Logger, ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
+	cacheKey := fmt.Sprintf("%s-%s", dc.Namespace, dc.Name)
+	if task, ok := scc.fuzzyListenMap.Load(cacheKey); ok {
+		_, transferOk := task.(FuzzyListenTask)
+		if transferOk {
+			return nil
+		}
+	}
+	fuzzyListenTask := FuzzyListenTask{
+		dcKey: types.NamespacedName{
+			Namespace: dc.Namespace,
+			Name:      dc.Name,
+		},
+		stopSignal:   make(chan struct{}),
+		configClient: scc.configClient,
+		client:       scc.client,
+		ctx:          ctx,
+		cs:           scc.cs,
+		locks:        scc.locks,
+	}
+	scc.fuzzyListenMap.Store(cacheKey, fuzzyListenTask)
+	fuzzyListenTask.start()
+	return nil
 }
 
 func (scc *DynamicConfigurationUpdateController) Finalize(ctx context.Context, dc *nacosiov1.DynamicConfiguration) error {
@@ -70,6 +246,16 @@ func (scc *DynamicConfigurationUpdateController) Finalize(ctx context.Context, d
 	if err := scc.CleanOldNacosConfig(&l, dc); err != nil {
 		l.Error(err, "clean old nacos config, cancel config listening error")
 		return err
+	}
+	cacheKey := fmt.Sprintf("%s-%s", dc.Namespace, dc.Name)
+	l.Info("try to stop fuzzy listen task")
+	if task, ok := scc.fuzzyListenMap.Load(cacheKey); ok {
+		if fuzzyListenTask, transferOk := task.(FuzzyListenTask); transferOk {
+			fuzzyListenTask.stop()
+		}
+		scc.fuzzyListenMap.Delete(cacheKey)
+	} else {
+		l.Info("fuzzy listen task not found")
 	}
 	return nil
 }
