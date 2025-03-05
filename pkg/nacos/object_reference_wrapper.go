@@ -3,6 +3,8 @@ package nacos
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/nacos-group/nacos-controller/pkg"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -10,7 +12,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"strings"
 )
 
 func init() {
@@ -47,6 +48,10 @@ type ObjectReferenceWrapper interface {
 	Flush() error
 	//Reload load ObjectReference, create it when not found
 	Reload() error
+
+	StoreContentLatest(dataId string, content string) error
+
+	GetContentLatest(dataId string) (string, bool, error)
 
 	GetAllKeys() ([]string, error)
 }
@@ -100,6 +105,24 @@ func (cmw *ConfigMapWrapper) GetContent(dataId string) (string, bool, error) {
 	return "", false, nil
 }
 
+func (cmw *ConfigMapWrapper) GetContentLatest(dataId string) (string, bool, error) {
+	var cm *v1.ConfigMap
+	var err error
+	if cm, err = cmw.cs.CoreV1().ConfigMaps(cmw.ObjectRef.Namespace).Get(context.TODO(), cmw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		return "", false, err
+	}
+	data := cm.Data
+	binaryData := cm.BinaryData
+	cmw.cm = cm
+	if v, ok := data[dataId]; ok {
+		return v, true, nil
+	}
+	if v, ok := binaryData[dataId]; ok {
+		return string(v), true, nil
+	}
+	return "", false, nil
+}
+
 func (cmw *ConfigMapWrapper) GetAllKeys() ([]string, error) {
 	if cmw.cm == nil {
 		if err := cmw.Reload(); err != nil {
@@ -136,6 +159,48 @@ func (cmw *ConfigMapWrapper) StoreContent(dataId string, content string) error {
 		}
 		cmw.cm.Data[dataId] = content
 	}
+	return nil
+}
+
+func (cmw *ConfigMapWrapper) StoreContentLatest(dataId string, content string) error {
+	var cm *v1.ConfigMap
+	var err error
+	var newflag bool
+
+	if cm, err = cmw.cs.CoreV1().ConfigMaps(cmw.ObjectRef.Namespace).Get(context.TODO(), cmw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		} else {
+			newflag = true
+		}
+		// if not found, try to create object reference
+		cm = &v1.ConfigMap{}
+		cm.Namespace = cmw.ObjectRef.Namespace
+		cm.Name = cmw.ObjectRef.Name
+	}
+
+	if strings.HasPrefix(content, "{") || strings.HasPrefix(content, "[") {
+		if cm.BinaryData == nil {
+			cm.BinaryData = map[string][]byte{}
+		}
+		cm.BinaryData[dataId] = []byte(content)
+	} else {
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+		cm.Data[dataId] = content
+	}
+	if !controllerutil.ContainsFinalizer(cm, pkg.FinalizerName) {
+		controllerutil.AddFinalizer(cm, pkg.FinalizerName)
+	}
+	if newflag {
+		if cm, err = cmw.cs.CoreV1().ConfigMaps(cm.Namespace).Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+	} else if cm, err = cmw.cs.CoreV1().ConfigMaps(cm.Namespace).Update(context.TODO(), cm, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	cmw.cm = cm
 	return nil
 }
 
@@ -246,6 +311,18 @@ func (sw *SecretWrapper) GetContent(dataId string) (string, bool, error) {
 	return content, ifExist, nil
 }
 
+func (sw *SecretWrapper) GetContentLatest(dataId string) (string, bool, error) {
+	var secret *v1.Secret
+	var err error
+
+	if secret, err = sw.cs.CoreV1().Secrets(sw.ObjectRef.Namespace).Get(context.TODO(), sw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		return "", false, err
+	}
+	content, ifExist := GetSecretContent(secret, dataId)
+	sw.secret = secret
+	return content, ifExist, nil
+}
+
 func (sw *SecretWrapper) GetAllKeys() ([]string, error) {
 	if sw.secret == nil {
 		if err := sw.Reload(); err != nil {
@@ -261,7 +338,44 @@ func (sw *SecretWrapper) StoreContent(dataId string, content string) error {
 			return err
 		}
 	}
-	StoreSecretContent(sw.secret, dataId, content)
+	err := StoreSecretContent(sw.secret, dataId, content)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sw *SecretWrapper) StoreContentLatest(dataId string, content string) error {
+	var secret *v1.Secret
+	var err error
+	var newflag bool
+
+	if secret, err = sw.cs.CoreV1().Secrets(sw.ObjectRef.Namespace).Get(context.TODO(), sw.ObjectRef.Name, metav1.GetOptions{}); err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		} else {
+			newflag = true
+		}
+		secret = &v1.Secret{}
+		secret.Namespace = sw.ObjectRef.Namespace
+		secret.Name = sw.ObjectRef.Name
+	}
+	err = StoreSecretContent(secret, dataId, content)
+	if err != nil {
+		return err
+	}
+	if !controllerutil.ContainsFinalizer(secret, pkg.FinalizerName) {
+		controllerutil.AddFinalizer(secret, pkg.FinalizerName)
+	}
+
+	if newflag {
+		if secret, err = sw.cs.CoreV1().Secrets(secret.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+	} else if secret, err = sw.cs.CoreV1().Secrets(secret.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{}); err != nil {
+		return err
+	}
+	sw.secret = secret
 	return nil
 }
 

@@ -6,11 +6,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,6 +71,9 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.O
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 		constant.WithNamespaceId(clientParams.Namespace),
+		constant.WithAppConnLabels(map[string]string{"k8s.namespace": key.Namespace,
+			"k8s.cluster": pkg.CurrentContext,
+			"k8s.name":    key.Name}),
 	}
 	if len(clientParams.Endpoint) > 0 {
 		clientOpts = append(clientOpts, constant.WithEndpoint(clientParams.Endpoint))
@@ -136,9 +141,10 @@ func (c *DefaultNacosConfigClient) PublishConfig(param client.NacosConfigParam) 
 		return false, err
 	}
 	return proxyClient.PublishConfig(vo.ConfigParam{
-		Group:   param.Group,
-		DataId:  param.DataId,
-		Content: param.Content,
+		Group:      param.Group,
+		DataId:     param.DataId,
+		Content:    param.Content,
+		ConfigTags: "k8s.cluster/" + pkg.CurrentContext + "," + "k8s.namespace/" + param.Key.Namespace + "," + "k8s.name/" + param.Key.Name,
 	})
 }
 
@@ -167,6 +173,20 @@ func (c *DefaultNacosConfigClient) ListenConfig(param client.NacosConfigParam) e
 
 func (c *DefaultNacosConfigClient) CloseClient(param client.NacosConfigParam) {
 	c.clientBuilder.Remove(param.NacosServerParam, param.Key)
+}
+
+func (c *DefaultNacosConfigClient) SearchConfigs(param client.SearchConfigParam) (*model.ConfigPage, error) {
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
+	if err != nil {
+		return nil, fmt.Errorf("get proxyClient failed, %v", err)
+	}
+	return proxyClient.SearchConfig(vo.SearchConfigParam{
+		Search:   "blur",
+		Group:    param.Group,
+		DataId:   param.DataId,
+		PageNo:   param.PageNo,
+		PageSize: param.PageSize,
+	})
 }
 
 func NewDefaultNacosConfigClient(p auth.NacosAuthProvider) client.NacosConfigClient {

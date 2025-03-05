@@ -2,6 +2,9 @@ package nacos
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -12,8 +15,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sync"
-	"time"
 )
 
 type Server2ClusterCallback interface {
