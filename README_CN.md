@@ -3,6 +3,7 @@
 
 当前版本定义CRD如下：
 - DynamicConfiguration：Nacos配置与Kubernetes配置的同步桥梁
+- ServiceDiscovery:：Nacos服务发现与Kubernetes服务发现同步桥梁
 
 [English Document](./README.md)
 
@@ -145,8 +146,91 @@ kubectl apply -f dc-demo.yaml -n <namespace>
       kind: Secret
       name: nacos-auth
 ```
+## Nacos与K8s集群服务同步
+Nacos Controller 2.0 支持Kubernetes集群服务同步到Nacos，支持将Kubernetes集群特定命名空间下的Service同步到Nacos指定命名空间下。用户可以通过Nacos实现实现对Kubernetes服务的服务发现。Nacos服务和Kubernetes服务的映射关系如下表所示:
+
+| Kubernetes Service | Nacos Service    |
+|------------------|-----------------|
+| Namespace        | 用户指定的命名空间       |
+| Name             | serviceName          |
+| Endpoint              | instance          |
+
+目前主要支持两种服务同步的策略：
+- 全量同步：Kubernetes集群特定命名空间下的所有Service自动同步至Nacos
+- 部分同步：只同步用户指定的Service至Nacos
+### Kubernetes集群服务全量同步Nacos
+编写ServiceDiscovery yaml文件：
+```yaml
+apiVersion: nacos.io/v1
+kind: ServiceDiscovery
+metadata:
+   name: sd-demo
+spec:
+   nacosServer:
+      # serverAddr: nacos地址
+      serverAddr: <your-nacos-server-addr>
+      # namespace: 用户指定的命名空间
+      namespace: <your-nacos-namespace-id>
+      # authRef: 引用存放Nacos 客户端鉴权信息的Secret，支持用户名/密码 和 AK/SK, Nacos服务端未开启鉴权可忽略
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
+```
+执行命令部署ServiceDiscovery到需要全量同步的Kubenetes集群命名空间下：
+```bash
+kubectl apply -f sd-demo.yaml -n <namespace>
+```
+
+### Kubernetes集群服务部分同步Nacos
+编写ServiceDiscovery yaml文件,和全量同步的区别在于需要指定需要同步的Service：
+```yaml
+apiVersion: nacos.io/v1
+kind: ServiceDiscovery
+metadata:
+   name: sd-demo
+spec:
+   nacosServer:
+      # serverAddr: nacos地址
+      serverAddr: <your-nacos-server-addr>
+      # namespace: 用户指定的命名空间
+      namespace: <your-nacos-namespace-id>
+      # authRef: 引用存放Nacos 客户端鉴权信息的Secret，支持用户名/密码 和 AK/SK, Nacos服务端未开启鉴权可忽略
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+   # 需要同步的Service
+   services: [svc1,svc2]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
+```
+执行命令部署ServiceDiscovery到需要同步的Kubenetes集群命名空间下：
+```bash
+kubectl apply -f sd-demo.yaml -n <namespace>
+```
+即可实现服务的部分同步
 
 ## 贡献者
 特别感谢以下人员/团队对本项目的贡献
 
 - 阿里云[EDAS](https://www.aliyun.com/product/edas)团队（项目孵化来源）
+- 阿里云[MSE](https://www.aliyun.com/product/aliware/mse)团队
