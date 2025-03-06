@@ -24,6 +24,7 @@ import (
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
 	nacosv1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/naming"
@@ -125,35 +126,16 @@ func (r *EndpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
-// func (r *EndpointReconciler) UnRegisterService(ctx context.Context, es *corev1.Endpoints, serviceInfo nacosvclient.ServiceInfo, sd *nacosv1.ServiceDiscovery) error {
-// 	addresses := naming.ConvertToAddresses(es, serviceInfo)
-// 	log.Log.Info("Sync instance to nacos", "addresses", addresses)
-// 	authProvider := auth.NewDefaultNacosAuthProvider(r.Client)
-// 	log.Log.Info("Sync instance to nacos", "authProvider", authProvider)
-// 	if nClient, err := nacosvclient.GetNacosNamingClientBuilder().BuildNamingClient(authProvider, sd); err == nil && nClient != nil {
-// 		log.Log.Info("Sync instance to nacos1", "service", serviceInfo.ServiceName, "addresses", addresses)
-// 		if !nClient.UnregisterService(serviceInfo) {
-// 			marshal, err := json.Marshal(addresses)
-// 			addressStr := ""
-// 			if err == nil {
-// 				addressStr = string(marshal)
-// 			}
-// 			return errors.New("Register service fail, serviceName: " + serviceInfo.ServiceName + ", addresses: " + addressStr)
-// 		}
-
-//		} else if err != nil {
-//			log.Log.Info("failed to sync instance to nacos ", "error ", err)
-//			return errors.New("Build nacos client fail,")
-//		} else {
-//			return errors.New("Build nacos client fail, NacosNamingClient is nil")
-//		}
-//		return nil
-//	}
 func (r *EndpointReconciler) SyncInstanceToNacos(ctx context.Context, es *corev1.Endpoints, serviceInfo naming.ServiceInfo, sd *nacosv1.ServiceDiscovery) error {
 	addresses := naming.ConvertToAddresses(es, serviceInfo)
 	log.Log.Info("Sync instance to nacos", "addresses", addresses)
 	authProvider := auth.NewDefaultNacosAuthProvider(r.Client)
 	log.Log.Info("Sync instance to nacos", "authProvider", authProvider)
+
+	serviceInfo.Metadata["k8s.name"] = sd.Name
+	serviceInfo.Metadata["k8s.namespace"] = sd.Namespace
+	serviceInfo.Metadata["k8s.cluster"] = pkg.CurrentContext
+
 	if nClient, err := naming.GetNacosNamingClientBuilder().BuildNamingClient(authProvider, sd); err == nil && nClient != nil {
 		log.Log.Info("Sync instance to nacos1", "service", serviceInfo.ServiceName, "addresses", addresses)
 		if !nClient.RegisterServiceInstances(serviceInfo, addresses) {

@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
@@ -69,6 +70,10 @@ func (m *NacosNamingClientBuilder) BuildNamingClient(authProvider auth.NacosAuth
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 		constant.WithNamespaceId(clientParams.Namespace),
+		constant.WithAppName("nacos-controller"),
+		constant.WithAppConnLabels(map[string]string{"k8s.namespace": sd.Namespace,
+			"k8s.cluster": pkg.CurrentContext,
+			"k8s.name":    sd.Name}),
 	}
 	if len(clientParams.Endpoint) > 0 {
 		clientOpts = append(clientOpts, constant.WithEndpoint(clientParams.Endpoint))

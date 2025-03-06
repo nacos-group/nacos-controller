@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/naming"
@@ -78,6 +79,9 @@ func (r *ServiceDiscoveryReconciler) syncEndponits(ctx context.Context, endpoint
 		if err != nil {
 			return err
 		}
+		svcInfo.Metadata["k8s.name"] = sd.Name
+		svcInfo.Metadata["k8s.namespace"] = sd.Namespace
+		svcInfo.Metadata["k8s.cluster"] = pkg.CurrentContext
 
 		if !nClient.RegisterServiceInstances(svcInfo, naming.ConvertToAddresses(&endpoints, svcInfo)) {
 			return errors.New("register service instances failed, service: " + svcInfo.ServiceName)
@@ -140,15 +144,12 @@ func (r *ServiceDiscoveryReconciler) syncExistedService(ctx context.Context, sd 
 }
 func (r *ServiceDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
-	// TODO(user): your logic here
 	log.Log.Info("ServiceDiscovery Reconcile", "req ", req.NamespacedName)
 	sd := &nacosiov1.ServiceDiscovery{}
 	fmt.Println("ServiceDiscovery Reconcile, namespace:", req.Namespace+", name: "+req.Name)
 	err := r.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, sd)
 	if err != nil {
-		// 如果资源不存在，可能是删除事件
 		fmt.Println("ServiceDiscoveryReconciler: Service deleted:", req.NamespacedName, err)
-		// 处理删除逻辑
 		return ctrl.Result{}, nil
 	}
 
