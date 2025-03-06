@@ -50,11 +50,16 @@ var _ webhook.Defaulter = &DynamicConfiguration{}
 func (r *DynamicConfiguration) Default() {
 	dynamicconfigurationlog.Info("default", "name", r.Name)
 
-	if r.Spec.Strategy.SyncPolicy == "" {
-		r.Spec.Strategy.SyncPolicy = IfAbsent
+	if r.Spec.Strategy.SyncScope == "" {
+		if r.Spec.ObjectRefs != nil {
+			r.Spec.Strategy.SyncScope = SyncScopePartial
+		} else {
+			r.Spec.Strategy.SyncScope = SyncScopeFull
+		}
 	}
-	if r.Spec.Strategy.SyncDirection == "" {
-		r.Spec.Strategy.SyncDirection = Cluster2Server
+
+	if r.Spec.Strategy.ConflictPolicy == "" {
+		r.Spec.Strategy.ConflictPolicy = PreferCluster
 	}
 }
 
@@ -92,10 +97,10 @@ func (r *DynamicConfiguration) validateDC() error {
 	if err := r.validateNacosServerConfiguration(); err != nil {
 		allErrs = append(allErrs, err)
 	}
-	if err := r.validateObjectRef(); err != nil {
+	if err := r.validateSyncStrategy(); err != nil {
 		allErrs = append(allErrs, err)
 	}
-	if err := r.validateSyncStrategy(); err != nil {
+	if err := r.validateObjectRefs(); err != nil {
 		allErrs = append(allErrs, err)
 	}
 	if len(allErrs) == 0 {
@@ -108,65 +113,67 @@ func (r *DynamicConfiguration) validateDC() error {
 }
 
 func (r *DynamicConfiguration) validateNacosServerConfiguration() *field.Error {
-	serverAddrEmpty := r.Spec.NacosServer.ServerAddr == nil || len(*r.Spec.NacosServer.ServerAddr) == 0
-	endpoint := r.Spec.NacosServer.Endpoint == nil || len(*r.Spec.NacosServer.Endpoint) == 0
+	serverAddrEmpty := len(r.Spec.NacosServer.ServerAddr) == 0
+	endpoint := len(r.Spec.NacosServer.Endpoint) == 0
 	if serverAddrEmpty && endpoint {
 		return field.Required(field.NewPath("spec").Child("nacosServer"), "either ServerAddr or Endpoint should be set")
 	}
-	if len(r.Spec.NacosServer.Group) == 0 {
-		return field.Required(field.NewPath("spec").Child("group"), "nacos group should be set")
+	if len(r.Spec.NacosServer.Namespace) == 0 {
+		return field.Required(field.NewPath("spec").Child("nacosServer").Child("namespace"), "nacos namespace should be set")
 	}
-	if r.Spec.NacosServer.AuthRef == nil {
-		return field.Required(field.NewPath("spec").Child("group"), "nacos auth reference should be set")
-	} else {
+	if r.Spec.NacosServer.AuthRef != nil {
 		supportGVKs := []string{SecretGVK.String()}
 		gvk := r.Spec.NacosServer.AuthRef.GroupVersionKind().String()
 		if !stringsContains(supportGVKs, gvk) {
 			return field.NotSupported(
-				field.NewPath("spec").Child("nacosServer").Child("authRef").Child("group"),
+				field.NewPath("spec").Child("nacosServer").Child("authRef"),
 				r.Spec.NacosServer.AuthRef,
 				supportGVKs)
 		}
 	}
-	if r.Spec.DataIds == nil || len(r.Spec.DataIds) == 0 {
-		return field.Required(field.NewPath("spec").Child("dataIds"), "at least one dataId should be set")
-	}
 	return nil
 }
 
-func (r *DynamicConfiguration) validateObjectRef() *field.Error {
-	if r.Spec.Strategy.SyncDirection != Cluster2Server {
-		return nil
+func (r *DynamicConfiguration) validateObjectRefs() *field.Error {
+	if r.Spec.Strategy.SyncScope == SyncScopeFull {
+		if r.Spec.ObjectRefs != nil {
+			return field.Invalid(field.NewPath("spec").Child("objectRefs"), r.Spec.ObjectRefs, "ObjectRefs should be empty when SyncStrategy is full")
+		} else {
+			return nil
+		}
 	}
-	if r.Spec.ObjectRef == nil {
-		return field.Required(field.NewPath("spec").Child("objectRef"), "ObjectRef should be set when SyncDirection is cluster2server")
+	if r.Spec.ObjectRefs == nil {
+		return field.Required(field.NewPath("spec").Child("objectRefs"), "ObjectRefs should be set when SyncStrategy is partial")
 	} else {
-		supportGVKs := []string{ConfigMapGVK.String()}
-		gvk := r.Spec.ObjectRef.GroupVersionKind().String()
-		if !stringsContains(supportGVKs, gvk) {
-			return field.NotSupported(
-				field.NewPath("spec").Child("objectRef"),
-				r.Spec.ObjectRef,
-				supportGVKs)
+		supportGVKs := []string{ConfigMapGVK.String(), SecretGVK.String()}
+		for _, objRef := range r.Spec.ObjectRefs {
+			gvk := objRef.GroupVersionKind().String()
+			if !stringsContains(supportGVKs, gvk) {
+				return field.NotSupported(
+					field.NewPath("spec").Child("objectRefs"),
+					objRef,
+					supportGVKs)
+			}
 		}
 	}
 	return nil
 }
 
 func (r *DynamicConfiguration) validateSyncStrategy() *field.Error {
-	syncDirectionSupportList := []string{string(Cluster2Server), string(Server2Cluster)}
-	if !stringsContains(syncDirectionSupportList, string(r.Spec.Strategy.SyncDirection)) {
+	syncScopeSupportList := []string{string(SyncScopePartial), string(SyncScopeFull)}
+	if !stringsContains(syncScopeSupportList, string(r.Spec.Strategy.SyncScope)) {
 		return field.NotSupported(
 			field.NewPath("spec").Child("strategy").Child("syncDirection"),
-			r.Spec.Strategy.SyncDirection,
-			syncDirectionSupportList)
+			r.Spec.Strategy.SyncScope,
+			syncScopeSupportList)
 	}
-	syncPolicySupportList := []string{string(Always), string(IfAbsent)}
-	if !stringsContains(syncPolicySupportList, string(r.Spec.Strategy.SyncPolicy)) {
+
+	conflictPolicySupportList := []string{string(PreferCluster), string(PreferServer)}
+	if !stringsContains(conflictPolicySupportList, string(r.Spec.Strategy.ConflictPolicy)) {
 		return field.NotSupported(
-			field.NewPath("spec").Child("strategy").Child("syncPolicy"),
-			r.Spec.Strategy.SyncPolicy,
-			syncPolicySupportList)
+			field.NewPath("spec").Child("strategy").Child("conflictPolicy"),
+			r.Spec.Strategy.ConflictPolicy,
+			conflictPolicySupportList)
 	}
 	return nil
 }

@@ -1,8 +1,11 @@
 package client
 
 import (
-	nacosv1 "github.com/nacos-group/nacos-controller/api/v1"
 	"sync"
+
+	"github.com/nacos-group/nacos-sdk-go/v2/model"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var _defaultClient NacosConfigClient
@@ -35,12 +38,32 @@ type NacosConfigClient interface {
 	DeleteConfig(param NacosConfigParam) (bool, error)
 	ListenConfig(param NacosConfigParam) error
 	CancelListenConfig(param NacosConfigParam) error
+	CloseClient(param NacosConfigParam)
+	SearchConfigs(param SearchConfigParam) (*model.ConfigPage, error)
 }
 
 type NacosConfigParam struct {
-	DynamicConfiguration *nacosv1.DynamicConfiguration
-	DataId               string
-	Group                string
-	Content              string
-	OnChange             func(namespace, group, dataId, data string)
+	Key              types.NamespacedName
+	AuthRef          *v1.ObjectReference
+	NacosServerParam NacosServerParam
+	DataId           string
+	Group            string
+	Content          string
+	OnChange         func(namespace, group, dataId, data string)
+}
+
+type NacosServerParam struct {
+	Endpoint   string
+	ServerAddr string
+	Namespace  string
+}
+
+type SearchConfigParam struct {
+	Key              types.NamespacedName
+	AuthRef          *v1.ObjectReference
+	NacosServerParam NacosServerParam
+	DataId           string
+	Group            string
+	PageNo           int
+	PageSize         int
 }

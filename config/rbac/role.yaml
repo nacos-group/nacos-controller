@@ -5,8 +5,41 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - endpoints
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints/finalizers
+  - secrets/finalizers
+  - services/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - endpoints/status
+  - secrets/status
+  - services/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - nacos.io
   resources:
+  - configmaps
   - dynamicconfigurations
   verbs:
   - create
@@ -19,13 +52,41 @@ rules:
 - apiGroups:
   - nacos.io
   resources:
+  - configmaps/finalizers
   - dynamicconfigurations/finalizers
   verbs:
   - update
 - apiGroups:
   - nacos.io
   resources:
+  - configmaps/status
   - dynamicconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - nacos.io.nacos.io
+  resources:
+  - servicediscoveries
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nacos.io.nacos.io
+  resources:
+  - servicediscoveries/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - nacos.io.nacos.io
+  resources:
+  - servicediscoveries/status
   verbs:
   - get
   - patch

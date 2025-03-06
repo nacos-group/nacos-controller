@@ -1,4 +1,5 @@
 ## Append samples of your project ##
 resources:
 - nacos.io_v1_dynamicconfiguration.yaml
+- nacos.io_v1_servicediscovery.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

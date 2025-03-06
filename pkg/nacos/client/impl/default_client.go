@@ -1,18 +1,21 @@
 package impl
 
 import (
-	"errors"
 	"fmt"
-	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/nacos-group/nacos-controller/pkg"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/auth"
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients"
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/v2/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/v2/model"
 	"github.com/nacos-group/nacos-sdk-go/v2/vo"
-	"strconv"
-	"strings"
-	"sync"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type ClientBuilder struct {
@@ -27,18 +30,32 @@ func GetNacosClientBuilder() *ClientBuilder {
 	return &builder
 }
 
-func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, dc *nacosiov1.DynamicConfiguration) (config_client.IConfigClient, error) {
-	if dc == nil {
-		return nil, fmt.Errorf("empty DynamicConfiguration")
+func (m *ClientBuilder) Remove(nacosServerParam client.NacosServerParam, key types.NamespacedName) {
+	cacheKey := fmt.Sprintf("%s-%s-%s-%s-%s", nacosServerParam.Endpoint, nacosServerParam.ServerAddr, nacosServerParam.Namespace, key.Namespace, key.Name)
+	cachedClient, ok := m.cache.Load(cacheKey)
+	if ok && cachedClient != nil {
+		cachedClient.(config_client.IConfigClient).CloseClient()
 	}
-	nacosServer := dc.Spec.NacosServer
-	// 简化判空逻辑，cacheKey仅内部使用
-	cacheKey := fmt.Sprintf("%s-%s-%s", nacosServer.Endpoint, nacosServer.ServerAddr, nacosServer.Namespace)
+	m.cache.Delete(cacheKey)
+	return
+}
+
+func (m *ClientBuilder) Get(nacosServerParam client.NacosServerParam, key types.NamespacedName) (config_client.IConfigClient, error) {
+	cacheKey := fmt.Sprintf("%s-%s-%s-%s-%s", nacosServerParam.Endpoint, nacosServerParam.ServerAddr, nacosServerParam.Namespace, key.Namespace, key.Name)
 	cachedClient, ok := m.cache.Load(cacheKey)
 	if ok && cachedClient != nil {
 		return cachedClient.(config_client.IConfigClient), nil
 	}
-	clientParams, err := authProvider.GetNacosClientParams(dc)
+	return nil, fmt.Errorf("empty DynamicConfiguration")
+}
+
+func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, authRef *v1.ObjectReference, nacosServerParam client.NacosServerParam, key types.NamespacedName) (config_client.IConfigClient, error) {
+	cacheKey := fmt.Sprintf("%s-%s-%s-%s-%s", nacosServerParam.Endpoint, nacosServerParam.ServerAddr, nacosServerParam.Namespace, key.Namespace, key.Name)
+	cachedClient, ok := m.cache.Load(cacheKey)
+	if ok && cachedClient != nil {
+		return cachedClient.(config_client.IConfigClient), nil
+	}
+	clientParams, err := authProvider.GetNacosClientParams(authRef, nacosServerParam, key.Namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -46,12 +63,17 @@ func (m *ClientBuilder) Build(authProvider auth.NacosAuthProvider, dc *nacosiov1
 	clientOpts := []constant.ClientOption{
 		constant.WithAccessKey(clientParams.AuthInfo.AccessKey),
 		constant.WithSecretKey(clientParams.AuthInfo.SecretKey),
+		constant.WithUsername(clientParams.AuthInfo.Username),
+		constant.WithPassword(clientParams.AuthInfo.Password),
 		constant.WithTimeoutMs(5000),
 		constant.WithNotLoadCacheAtStart(true),
 		constant.WithLogDir("/tmp/nacos/log"),
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("debug"),
 		constant.WithNamespaceId(clientParams.Namespace),
+		constant.WithAppConnLabels(map[string]string{"k8s.namespace": key.Namespace,
+			"k8s.cluster": pkg.CurrentContext,
+			"k8s.name":    key.Name}),
 	}
 	if len(clientParams.Endpoint) > 0 {
 		clientOpts = append(clientOpts, constant.WithEndpoint(clientParams.Endpoint))
@@ -92,12 +114,9 @@ type DefaultNacosConfigClient struct {
 }
 
 func (c *DefaultNacosConfigClient) CancelListenConfig(param client.NacosConfigParam) error {
-	if param.DynamicConfiguration == nil {
-		return errors.New("empty DynamicConfiguration")
-	}
-	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.DynamicConfiguration)
+	proxyClient, err := c.clientBuilder.Get(param.NacosServerParam, param.Key)
 	if err != nil {
-		return err
+		return fmt.Errorf("get proxyClient failed, %v", err)
 	}
 	return proxyClient.CancelListenConfig(vo.ConfigParam{
 		Group:  param.Group,
@@ -106,10 +125,7 @@ func (c *DefaultNacosConfigClient) CancelListenConfig(param client.NacosConfigPa
 }
 
 func (c *DefaultNacosConfigClient) GetConfig(param client.NacosConfigParam) (string, error) {
-	if param.DynamicConfiguration == nil {
-		return "", errors.New("empty DynamicConfiguration")
-	}
-	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.DynamicConfiguration)
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
 	if err != nil {
 		return "", err
 	}
@@ -120,25 +136,20 @@ func (c *DefaultNacosConfigClient) GetConfig(param client.NacosConfigParam) (str
 }
 
 func (c *DefaultNacosConfigClient) PublishConfig(param client.NacosConfigParam) (bool, error) {
-	if param.DynamicConfiguration == nil {
-		return false, errors.New("empty DynamicConfiguration")
-	}
-	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.DynamicConfiguration)
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
 	if err != nil {
 		return false, err
 	}
 	return proxyClient.PublishConfig(vo.ConfigParam{
-		Group:   param.Group,
-		DataId:  param.DataId,
-		Content: param.Content,
+		Group:      param.Group,
+		DataId:     param.DataId,
+		Content:    param.Content,
+		ConfigTags: "k8s.cluster/" + pkg.CurrentContext + "," + "k8s.namespace/" + param.Key.Namespace + "," + "k8s.name/" + param.Key.Name,
 	})
 }
 
 func (c *DefaultNacosConfigClient) DeleteConfig(param client.NacosConfigParam) (bool, error) {
-	if param.DynamicConfiguration == nil {
-		return false, errors.New("empty DynamicConfiguration")
-	}
-	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.DynamicConfiguration)
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
 	if err != nil {
 		return false, err
 	}
@@ -149,10 +160,7 @@ func (c *DefaultNacosConfigClient) DeleteConfig(param client.NacosConfigParam) (
 }
 
 func (c *DefaultNacosConfigClient) ListenConfig(param client.NacosConfigParam) error {
-	if param.DynamicConfiguration == nil {
-		return errors.New("empty DynamicConfiguration")
-	}
-	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.DynamicConfiguration)
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
 	if err != nil {
 		return err
 	}
@@ -160,6 +168,24 @@ func (c *DefaultNacosConfigClient) ListenConfig(param client.NacosConfigParam) e
 		Group:    param.Group,
 		DataId:   param.DataId,
 		OnChange: param.OnChange,
+	})
+}
+
+func (c *DefaultNacosConfigClient) CloseClient(param client.NacosConfigParam) {
+	c.clientBuilder.Remove(param.NacosServerParam, param.Key)
+}
+
+func (c *DefaultNacosConfigClient) SearchConfigs(param client.SearchConfigParam) (*model.ConfigPage, error) {
+	proxyClient, err := c.clientBuilder.Build(c.authProvider, param.AuthRef, param.NacosServerParam, param.Key)
+	if err != nil {
+		return nil, fmt.Errorf("get proxyClient failed, %v", err)
+	}
+	return proxyClient.SearchConfig(vo.SearchConfigParam{
+		Search:   "blur",
+		Group:    param.Group,
+		DataId:   param.DataId,
+		PageNo:   param.PageNo,
+		PageSize: param.PageSize,
 	})
 }
 

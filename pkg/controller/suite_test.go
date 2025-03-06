@@ -23,7 +23,6 @@ import (
 	"github.com/nacos-group/nacos-controller/pkg/nacos/client/impl"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
-	"os"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -62,7 +61,6 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	ensureEnvKeyExist("KUBECONFIG")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
@@ -106,12 +104,7 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	cleanDynamicConfigurationTestResource()
 	cancel()
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })
-
-func ensureEnvKeyExist(key string) {
-	Expect(len(os.Getenv(key)) > 0).Should(BeTrue(), "missing env key: "+key)
-}

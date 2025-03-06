@@ -2,8 +2,11 @@ package nacos
 
 import (
 	"context"
-	"fmt"
+	"sync"
+	"time"
+
 	nacosiov1 "github.com/nacos-group/nacos-controller/api/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -12,8 +15,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sync"
-	"time"
 )
 
 type Server2ClusterCallback interface {
@@ -21,20 +22,22 @@ type Server2ClusterCallback interface {
 	CallbackWithContext(ctx context.Context, namespace, group, dataId, content string)
 }
 
-func NewDefaultServer2ClusterCallback(c client.Client, cs *kubernetes.Clientset, mappings *DataId2DCMappings, locks *LockManager) Server2ClusterCallback {
+func NewDefaultServer2ClusterCallback(c client.Client, cs *kubernetes.Clientset, locks *LockManager, dcKey types.NamespacedName, objectRef v1.ObjectReference) Server2ClusterCallback {
 	return &DefaultServer2ClusterCallback{
-		Client:   c,
-		cs:       cs,
-		mappings: mappings,
-		locks:    locks,
+		Client:    c,
+		cs:        cs,
+		locks:     locks,
+		dcKey:     dcKey,
+		objectRef: objectRef,
 	}
 }
 
 type DefaultServer2ClusterCallback struct {
-	client.Client
-	cs       *kubernetes.Clientset
-	mappings *DataId2DCMappings
-	locks    *LockManager
+	Client    client.Client
+	cs        *kubernetes.Clientset
+	locks     *LockManager
+	dcKey     types.NamespacedName
+	objectRef v1.ObjectReference
 }
 
 func (cb *DefaultServer2ClusterCallback) Callback(namespace, group, dataId, content string) {
@@ -42,69 +45,40 @@ func (cb *DefaultServer2ClusterCallback) Callback(namespace, group, dataId, cont
 }
 
 func (cb *DefaultServer2ClusterCallback) CallbackWithContext(ctx context.Context, namespace, group, dataId, content string) {
-	l := log.FromContext(ctx, "namespace", namespace, "group", group, "dataId", dataId)
-	ctx = log.IntoContext(ctx, l)
-	l.Info("server2cluster callback")
-	dcNNList := cb.mappings.GetDCList(namespace, group, dataId)
-	for _, nn := range dcNNList {
-		if err := retry.RetryOnConflict(wait.Backoff{
-			Duration: 1 * time.Second,
-			Factor:   2,
-			Steps:    3,
-		}, func() error {
-			// 以DC纬度，锁住更新
-			l.Info("server2cluster callback for " + nn.String())
-			lockName := nn.String()
-			lock := cb.locks.GetLock(lockName)
-			lock.Lock()
-			defer lock.Unlock()
-			return cb.server2ClusterCallbackOneDC(ctx, namespace, group, dataId, content, nn)
-		}); err != nil {
-			l.Error(err, "update config failed", "dc", nn)
-		}
+	l := log.FromContext(ctx, "dynamicConfiguration", cb.dcKey.String(), "namespace", namespace, "group", group, "dataId", dataId, "type", "listenCallBack")
+	l.Info("server2cluster callback for " + cb.dcKey.String())
+	if err := retry.RetryOnConflict(wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2,
+		Steps:    3,
+	}, func() error {
+		lockName := cb.dcKey.String()
+		lock := cb.locks.GetLock(lockName)
+		lock.Lock()
+		defer lock.Unlock()
+		return cb.syncConfigToLocal(ctx, namespace, group, dataId, content)
+	}); err != nil {
+		l.Error(err, "update config failed", "dc", cb.dcKey)
 	}
-	l.Info("server2cluster callback processed", "dcList", dcNNList)
+	l.Info("server2cluster callback processed," + cb.dcKey.String())
+	return
 }
 
-func (cb *DefaultServer2ClusterCallback) server2ClusterCallbackOneDC(ctx context.Context, namespace, group, dataId, content string, nn types.NamespacedName) error {
+func (cb *DefaultServer2ClusterCallback) syncConfigToLocal(ctx context.Context, namespace, group, dataId, content string) error {
 	l := log.FromContext(ctx)
-	l = l.WithValues("dc", nn)
+	l = l.WithValues("dynamicConfiguration", cb.dcKey.String(), "namespace", namespace, "group", group, "dataId", dataId, "type", "listenCallBack")
 	dc := nacosiov1.DynamicConfiguration{}
-	if err := cb.Get(ctx, nn, &dc); err != nil {
+	if err := cb.Client.Get(ctx, cb.dcKey, &dc); err != nil {
 		if errors.IsNotFound(err) {
-			cb.mappings.RemoveMapping(namespace, group, dataId, nn)
-			l.Info("mapping removed due to dc not found")
+			l.Info("DynamicConfiguration not found")
 			return nil
 		}
 		l.Error(err, "get DynamicConfiguration error")
 		return err
 	}
-	if !StringSliceContains(dc.Spec.DataIds, dataId) {
-		cb.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to dataId not found in spec.DataIds")
-		return nil
-	}
-	if dc.Spec.NacosServer.Namespace != namespace {
-		cb.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to namespace changed", "namespace from server", namespace, "namespace in dc", dc.Spec.NacosServer.Namespace)
-		return nil
-	}
-	if dc.Spec.NacosServer.Group != group {
-		cb.mappings.RemoveMapping(namespace, group, dataId, nn)
-		l.Info("mapping removed due to group changed", "group from server", group, "group in dc", dc.Spec.NacosServer.Group)
-		return nil
-	}
-	if dc.Status.ObjectRef == nil {
-		err := fmt.Errorf("ObjectReference empty in status")
-		l.Error(err, "ObjectReference empty in status")
-		return err
-	}
-
-	objRef := dc.Status.ObjectRef.DeepCopy()
-	objRef.Namespace = dc.Namespace
-	objWrapper, err := NewObjectReferenceWrapper(cb.cs, &dc, objRef)
+	objWrapper, err := NewObjectReferenceWrapper(cb.cs, &dc, &cb.objectRef)
 	if err != nil {
-		l.Error(err, "create object wrapper error", "objRef", objRef)
+		l.Error(err, "create object reference wrapper error", "obj", cb.objectRef)
 		return err
 	}
 	oldContent, _, err := objWrapper.GetContent(dataId)
@@ -112,98 +86,32 @@ func (cb *DefaultServer2ClusterCallback) server2ClusterCallbackOneDC(ctx context
 		l.Error(err, "read content error")
 		return err
 	}
+	if len(content) == 0 && dc.Spec.Strategy.SyncDeletion == false {
+		l.Info("ignored due to syncDeletion is false", "dc", dc.Name)
+		UpdateSyncStatusIfAbsent(&dc, group, dataId, "", "server", metav1.Now(), true, "skipped due to syncDeletion is false")
+		return cb.Client.Status().Update(ctx, &dc)
+	}
 	newMd5 := CalcMd5(content)
 	if newMd5 == CalcMd5(oldContent) {
 		l.Info("ignored due to same content", "md5", newMd5)
-		UpdateSyncStatusIfAbsent(&dc, dataId, newMd5, "server", metav1.Now(), true, "skipped due to same md5")
+		UpdateSyncStatusIfAbsent(&dc, group, dataId, newMd5, "server", metav1.Now(), true, "skipped due to same md5")
 		return nil
 	}
 	if err := objWrapper.StoreContent(dataId, content); err != nil {
-		l.Error(err, "update content error", "obj", objRef)
+		l.Error(err, "update content error", "obj", cb.objectRef)
 		return err
 	}
-	UpdateSyncStatus(&dc, dataId, newMd5, "server", metav1.Now(), true, "")
-	return cb.Status().Update(ctx, &dc)
-}
-
-type DataId2DCMappings struct {
-	m    map[string][]types.NamespacedName
-	lock sync.RWMutex
-}
-
-func NewDataId2DCMappings() *DataId2DCMappings {
-	return &DataId2DCMappings{
-		m:    map[string][]types.NamespacedName{},
-		lock: sync.RWMutex{},
+	l.Info("update content success", "newContent", content, "oldContent", oldContent)
+	UpdateSyncStatus(&dc, group, dataId, newMd5, "server", metav1.Now(), true, "")
+	if err := cb.Client.Status().Update(ctx, &dc); err != nil {
+		l.Error(err, "update status error")
+		return err
 	}
-}
-
-func (d *DataId2DCMappings) AddMapping(namespaceId, group, dataId string, nn types.NamespacedName) {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	key := GetNacosConfigurationUniKey(namespaceId, group, dataId)
-	arr, ok := d.m[key]
-	if !ok {
-		d.m[key] = []types.NamespacedName{nn}
-		return
+	if err := objWrapper.Flush(); err != nil {
+		l.Error(err, "flush object reference error")
+		return err
 	}
-	found := false
-	for _, v := range arr {
-		if v.String() == nn.String() {
-			found = true
-			break
-		}
-	}
-	if found {
-		return
-	}
-	arr = append(arr, nn)
-	d.m[key] = arr
-}
-
-func (d *DataId2DCMappings) GetDCList(namespaceId, group, dataId string) []types.NamespacedName {
-	d.lock.RLock()
-	d.lock.RUnlock()
-
-	key := GetNacosConfigurationUniKey(namespaceId, group, dataId)
-	return d.m[key]
-}
-
-func (d *DataId2DCMappings) HasMapping(namespaceId, group, dataId string, nn types.NamespacedName) bool {
-	d.lock.RLock()
-	defer d.lock.RUnlock()
-
-	key := GetNacosConfigurationUniKey(namespaceId, group, dataId)
-	arr, ok := d.m[key]
-	if !ok {
-		return false
-	}
-	for _, v := range arr {
-		if v.String() == nn.String() {
-			return true
-		}
-	}
-	return false
-}
-
-func (d *DataId2DCMappings) RemoveMapping(namespaceId, group, dataId string, nn types.NamespacedName) {
-	if !d.HasMapping(namespaceId, group, dataId, nn) {
-		return
-	}
-
-	d.lock.Lock()
-	defer d.lock.Unlock()
-
-	key := GetNacosConfigurationUniKey(namespaceId, group, dataId)
-	arr := d.m[key]
-	var newArr []types.NamespacedName
-	for _, v := range arr {
-		if v.String() == nn.String() {
-			continue
-		}
-		newArr = append(newArr, v)
-	}
-	d.m[key] = newArr
+	return nil
 }
 
 type LockManager struct {
