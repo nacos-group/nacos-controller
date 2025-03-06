@@ -149,8 +149,90 @@ and the partial synchronization of configurations will be achieved.
       name: nacos-auth
 ```
 
+## Nacos and Kubernetes Cluster Service Synchronization
+Nacos Controller 2.0 supports synchronizing Kubernetes cluster services to Nacos, allowing services under specific namespaces in a Kubernetes cluster to be synced to a designated namespace in Nacos. Users can leverage Nacos to achieve service discovery for Kubernetes services. The mapping relationship between Nacos services and Kubernetes services is as follows:
+
+| Kubernetes Service | Nacos Service    |
+|------------------|-----------------|
+| Namespace        | User-specified namespace       |
+| Name             | serviceName          |
+| Endpoint              | instance          |
+
+Currently, two synchronization strategies are primarily supported:
+- Full Sync: Automatically synchronizes all Services under a specific namespace in the Kubernetes cluster to Nacos
+- Partial Sync: Synchronizes only user-specified Services to Nacos.
+### Full Synchronization of Kubernetes Services to Nacos
+Create a ServiceDiscovery YAML file：
+```yaml
+apiVersion: nacos.io/v1
+kind: ServiceDiscovery
+metadata:
+   name: sd-demo
+spec:
+   nacosServer:
+      # serverAddr: Nacos server address
+      serverAddr: <your-nacos-server-addr>
+      # namespace: User-specified namespace in Nacos
+      namespace: <your-nacos-namespace-id>
+      # authRef: Secret containing Nacos client authentication credentials (supports username/password or AK/SK; omit if Nacos server authentication is disabled)
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
+```
+Deploy the ServiceDiscovery to the target Kubernetes namespace:
+```bash
+kubectl apply -f sd-demo.yaml -n <namespace>
+```
+
+### Partial Synchronization of Kubernetes Services to Nacos
+Create a ServiceDiscovery YAML file (the only difference from full sync is specifying the Services to sync):
+```yaml
+apiVersion: nacos.io/v1
+kind: ServiceDiscovery
+metadata:
+   name: sd-demo
+spec:
+   nacosServer:
+      # serverAddr: Nacos server address  
+      serverAddr: <your-nacos-server-addr>
+      # namespace: User-specified namespace in Nacos
+      namespace: <your-nacos-namespace-id>
+      # authRef: Secret containing Nacos client authentication credentials (supports username/password or AK/SK; omit if Nacos server authentication is disabled)  
+      authRef:
+         apiVersion: v1
+         kind: Secret
+         name: nacos-auth
+   # List of Services to sync  
+   services: [svc1,svc2]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+    name: nacos-auth
+data:
+    accessKey: <base64 ak>
+    secretKey: <base64 sk>
+    username: <base64 your-nacos-username>
+    password: <base64 your-nacos-password>
+```
+Deploy the ServiceDiscovery to the target Kubernetes namespace:
+```bash
+kubectl apply -f sd-demo.yaml -n <namespace>
+```
 
 ## Contributors
 Special thanks to the following individuals/teams for their contributions to this project:
 
 - Alibaba Cloud [EDAS](https://www.aliyun.com/product/edas) team (project incubation source)
+- Alibaba Cloud [MSE](https://www.aliyun.com/product/aliware/mse) team
