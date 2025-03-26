@@ -25,6 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,6 +69,17 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			l.Error(err, "panic", "req", req, "recover", r)
 		}
 	}()
+	if pkg.CurrentContext == "null" {
+		clusterConfig := v1.ConfigMap{}
+		if err := r.Get(nil, types.NamespacedName{Namespace: "kube-system",
+			Name: "ack-cluster-profile"}, &clusterConfig); err != nil {
+			if errors.IsNotFound(err) {
+				l.Error(err, "unable to get cluster profile")
+			}
+			l.Error(err, "unable to get cluster profile")
+		}
+		pkg.CurrentContext = clusterConfig.Data["clusterid"]
+	}
 	configMap := v1.ConfigMap{}
 	if err := r.Get(ctx, req.NamespacedName, &configMap); err != nil {
 		if errors.IsNotFound(err) {
