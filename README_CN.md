@@ -20,6 +20,15 @@ kubectl create ns nacos
 helm install -n nacos nacos-controller .
 ```
 ## Nacos和K8s集群配置同步
+### 快速开始
+通过以下的命令，你可以快速将kubernetes集群中当前命名空间的配置全量同步到Nacos中。
+```bash
+cd nacos-controller
+chmod +x configQuicStart.sh 
+./configQuicStart.sh <nacos-addr> <nacos-namespace-id>
+```
+除此之外，你还可以根据自己的需要编写DynamicConfiguration yaml文件，并部署到K8s集群中。
+
 Nacos Controller 2.0 支持Kubernetes集群配置和Nacos 配置的双向同步，支持将Kubernetes集群特定命名空间下的ConfigMap以及Secret同步到Nacos指定命名空间下中。用户可以通过Nacos实现对于Kubernetes集群配置的动态修改和管理。Nacos配置和Kubernetes配置的映射关系如下表所示:
 
 | ConfigMap/Secret | Nacos Config    |
