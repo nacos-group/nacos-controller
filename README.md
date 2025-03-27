@@ -21,6 +21,15 @@ helm install -n nacos nacos-controller .
 ```
 
 ## Configuration Synchronization Between Nacos and Kubernetes Clusters
+### Quick start
+By using the following command, you can quickly synchronize all configurations of the current namespace in the Kubernetes cluster to Nacos.
+```bash
+cd nacos-controller
+chmod +x configQuicStart.sh 
+./configQuicStart.sh <nacos-addr> <nacos-namespace-id>
+```
+In addition, you can write your own DynamicConfiguration YAML file according to your needs and deploy it to the K8s cluster.
+
 Nacos Controller 2.0 supports bidirectional synchronization between Kubernetes cluster configurations and Nacos configurations. It can synchronize ConfigMaps and Secrets from specific Kubernetes namespaces to specified Nacos namespaces. Users can dynamically modify and manage Kubernetes cluster configurations through Nacos. The mapping relationship is as follows:
 
 | ConfigMap/Secret | Nacos Config    |
