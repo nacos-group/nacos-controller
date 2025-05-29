@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"log"
 	"os"
 
 	"github.com/nacos-group/nacos-controller/pkg/nacos"
@@ -55,6 +56,7 @@ func init() {
 }
 
 func main() {
+	log.SetOutput(os.Stdout)
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
