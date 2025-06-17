@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strconv"
 	"strings"
 	"sync"
@@ -234,22 +235,23 @@ func (c *NacosNamingClient) UnregisterService(serviceInfo ServiceInfo) bool {
 
 func (c *NacosNamingClient) RegisterServiceInstances(serviceInfo ServiceInfo, addresses []Address) bool {
 	if !c.UpdateServiceHealthCheckType(serviceInfo.ServiceKey) {
-		logger.Warnf("Update service health check type fail, service (%s@@%s) is not registered.", serviceInfo.ServiceName, serviceInfo.Group)
+		log.Log.Info(fmt.Sprintf("Update service health check type fail, service (%s@@%s) is not registered.", serviceInfo.ServiceName, serviceInfo.Group))
 		return false
 	}
 
 	oldAddresses, err := c.GetAllInstances(serviceInfo)
+	log.Log.Info("RegisterServiceInstances, old: " + strconv.Itoa(len(oldAddresses)))
 
 	if err != nil {
-		logger.Errorf("Select all instances fail, service (%s@@%s).", serviceInfo.ServiceName, serviceInfo.Group)
+		log.Log.Error(err, fmt.Sprintf("Select all instances fail, service (%s@@%s).", serviceInfo.ServiceName, serviceInfo.Group))
 		return false
 	}
 
 	added, deleted := diffAddresses(oldAddresses, addresses)
 
-	if len(added) > 0 {
-		logger.Infof("Register service (%s@@%s), added %d, deleted %d.",
-			serviceInfo.ServiceName, serviceInfo.Group, len(added), len(deleted))
+	if len(added) > 0 || len(deleted) > 0 {
+		log.Log.Info(fmt.Sprintf("Register service (%s@@%s), added %d, deleted %d.",
+			serviceInfo.ServiceName, serviceInfo.Group, len(added), len(deleted)))
 	}
 
 	for _, address := range added {
@@ -264,8 +266,8 @@ func (c *NacosNamingClient) RegisterServiceInstances(serviceInfo ServiceInfo, ad
 			GroupName:   serviceInfo.Group,
 			Ephemeral:   false,
 		}); err != nil {
-			logger.Errorf("Register instance (%s:%d) with service (%s@@%s) fail, err %v.",
-				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.Group, err)
+			log.Log.Error(err, fmt.Sprintf("Register instance (%s:%d) with service (%s@@%s) fail",
+				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.Group))
 			return false
 		}
 	}
@@ -280,6 +282,8 @@ func (c *NacosNamingClient) RegisterServiceInstances(serviceInfo ServiceInfo, ad
 		}); err != nil {
 			logger.Errorf("Unregister instance (%s:%d) with service (%s@@%s) fail, err %v.",
 				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.ServiceKey.Group, serviceInfo)
+			log.Log.Error(err, fmt.Sprintf("Unregister instance (%s:%d) with service (%s@@%s) fail",
+				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.ServiceKey.Group))
 			return false
 		}
 	}
@@ -305,6 +309,10 @@ func (c *NacosNamingClient) UnregisterServiceInstances(serviceInfo ServiceInfo, 
 }
 
 func diffAddresses(old, curr []Address) ([]Address, []Address) {
+	bs, _ := json.Marshal(old)
+	bsNew, _ := json.Marshal(curr)
+	log.Log.Info("diffAddresses, old: " + string(bs) + ", curr: " + string(bsNew))
+
 	var added, deleted []Address
 	oldAddressesSet := make(map[Address]struct{}, len(old))
 	newAddressesSet := make(map[Address]struct{}, len(curr))
@@ -330,21 +338,3 @@ func diffAddresses(old, curr []Address) ([]Address, []Address) {
 
 	return added, deleted
 }
-
-// func ConvertToAddresses(realPort uint64, endpoints *v1.Endpoints) []Address {
-// 	var addresses []Address
-// 	for _, subset := range endpoints.Subsets {
-// 		for _, address := range subset.Addresses {
-// 			for _, port := range subset.Ports {
-// 				if port.Port == int32(realPort) {
-// 					addresses = append(addresses, Address{
-// 						IP:   address.IP,
-// 						Port: realPort,
-// 					})
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	return addresses
-// }
