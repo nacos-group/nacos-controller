@@ -113,7 +113,7 @@ func (n *NacosHttpSdk) executeRequest(method, apiPath string, params url.Values,
 		if strings.Contains(string(bytes1), "service not found") {
 			return bytes1, fmt.Errorf("service not found: %s", params.Get("serviceName"))
 		}
-
+		log.Log.Error(nil, fmt.Sprintf("Unexpected status %d, response: %s", resp.StatusCode, string(bytes1)))
 		return bytes1, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 

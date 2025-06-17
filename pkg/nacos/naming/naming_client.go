@@ -280,8 +280,6 @@ func (c *NacosNamingClient) RegisterServiceInstances(serviceInfo ServiceInfo, ad
 			GroupName:   serviceInfo.Group,
 			Ephemeral:   false,
 		}); err != nil {
-			logger.Errorf("Unregister instance (%s:%d) with service (%s@@%s) fail, err %v.",
-				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.ServiceKey.Group, serviceInfo)
 			log.Log.Error(err, fmt.Sprintf("Unregister instance (%s:%d) with service (%s@@%s) fail",
 				address.IP, address.Port, serviceInfo.ServiceName, serviceInfo.ServiceKey.Group))
 			return false
