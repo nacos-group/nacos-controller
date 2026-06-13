@@ -52,7 +52,7 @@ func DynamicConfigurationMatch(object client.Object, dc *nacosiov1.DynamicConfig
 			return true
 		}
 	}
-	return true
+	return false
 }
 
 func GetAllKeys(object client.Object) []string {
